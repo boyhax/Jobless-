@@ -1,0 +1,19 @@
+{
+  "-": "-",
+  "App.feed": "Muro",
+  "App.jobs": "Empleos",
+  "App.network_strength": "FORTALEZA DE LA RED",
+  "App.search_placeholder": "Buscar habilidades/expertos...",
+  "App.trending_pulse": "Pulso de Tendencia",
+  "App.user_demo": "Usuario Demo",
+  "App.user_recruiter": "Rep. de Empresa",
+  "App.verified_professionals": "profesionales verificados",
+  "PostCard.apply_now": "Aplicar Ahora",
+  "PostCard.direct_sync": "Sincronización directa con el gerente de contratación disponible.",
+  "PostCard.opportunity_portal": "Portal de Oportunidades",
+  "Profile.engagement": "Interacción",
+  "Profile.synths_recv": "Sincros Recibidas",
+  "Profile.views": "Vistas",
+  "Sync request sent!": "¡Solicitud de sincronización enviada!",
+  "|": "|"
+}

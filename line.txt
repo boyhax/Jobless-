@@ -1,0 +1,1 @@
+                      <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest">{profileData.headline}</p>

@@ -1,0 +1,19 @@
+{
+  "-": "-",
+  "App.feed": "Feed",
+  "App.jobs": "Jobs",
+  "App.network_strength": "NETWORK STRENGTH",
+  "App.search_placeholder": "Search skills/experts...",
+  "App.trending_pulse": "Trending Pulse",
+  "App.user_demo": "Demo User",
+  "App.user_recruiter": "Company Rep",
+  "App.verified_professionals": "verified professionals",
+  "PostCard.apply_now": "Apply Now",
+  "PostCard.direct_sync": "Direct sync with hiring manager available.",
+  "PostCard.opportunity_portal": "Opportunity Portal",
+  "Profile.engagement": "Engagement",
+  "Profile.synths_recv": "Syncs Recv",
+  "Profile.views": "Profile Views",
+  "Sync request sent!": "Sync request sent!",
+  "|": "|"
+}
