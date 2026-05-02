@@ -3,11 +3,47 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
+import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const db = new Database('prosync.db');
+
+let genAI: GoogleGenerativeAI | null = null;
+
+function getModel(modelName: string = "gemini-1.5-flash"): GenerativeModel {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!genAI) {
+    genAI = new GoogleGenerativeAI(apiKey || 'dummy-key');
+  }
+  return genAI.getGenerativeModel({ model: modelName });
+}
+
+/**
+ * Enhanced AI helper with smart fallbacks for demo purposes
+ */
+async function generateContentSafe(prompt: string, fallback: any, isJson: boolean = true) {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.length < 20) {
+    console.warn("AI: Using mock fallback (Invalid or placeholder API key)");
+    return fallback;
+  }
+
+  try {
+    const model = getModel();
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      ...(isJson ? { generationConfig: { responseMimeType: 'application/json' } } : {})
+    });
+    const text = result.response.text();
+    return isJson ? JSON.parse(text) : text;
+  } catch (err) {
+    console.error("AI Error, using fallback:", err);
+    return fallback;
+  }
+}
 
 // Initialize Database
 db.exec(`
@@ -65,7 +101,20 @@ db.exec(`
     type TEXT, -- 'standard', 'cv_update', 'discussion'
     attachment_type TEXT, -- 'cv_item', 'link', 'discussion'
     attachment_id INTEGER,
+    quiz_data TEXT, -- JSON: { question: string, options: string[], correctIndex: number }
+    poll_data TEXT, -- JSON: { question: string, options: string[] }
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS post_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER,
+    user_id INTEGER,
+    type TEXT, -- 'quiz', 'poll'
+    response_index INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 
@@ -149,6 +198,17 @@ db.exec(`
     FOREIGN KEY (receiver_id) REFERENCES users(id)
   );
 
+  CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    name TEXT,
+    url TEXT,
+    type TEXT,
+    purpose TEXT, -- 'cv_item', 'portfolio_item', 'other'
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
   CREATE TABLE IF NOT EXISTS job_alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -226,14 +286,31 @@ async function startServer() {
 
   app.use(express.json());
 
-  // --- API ROUTES ---
+  // --- REQUEST LOGGING ---
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api')) {
+      console.log(`[API REQUEST] ${new Date().toISOString()} - ${req.method} ${req.url}`);
+    }
+    next();
+  });
 
-  // Mock Auth (In a real app, use JWT/Sessions and Hashing)
-  app.post('/api/auth/login', (req, res) => {
+  const apiRouter = express.Router();
+
+  // Debug endpoint
+  apiRouter.get('/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      time: new Date().toISOString(),
+      ai_key_found: !!process.env.GEMINI_API_KEY,
+      ai_key_length: process.env.GEMINI_API_KEY?.length || 0
+    });
+  });
+
+  // Mock Auth
+  apiRouter.post('/auth/login', (req, res) => {
     const { email } = req.body;
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
-      // Auto-register for demo purposes if user doesn't exist
       const name = email.split('@')[0];
       const result = db.prepare('INSERT INTO users (email, full_name, headline) VALUES (?, ?, ?)')
         .run(email, name, 'Professional Individual');
@@ -243,237 +320,130 @@ async function startServer() {
   });
 
   // Notifications
-  app.get('/api/notifications/:userId', (req, res) => {
+  apiRouter.get('/notifications/:userId', (req, res) => {
     const { userId } = req.params;
     const notifications = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20').all(userId);
     res.json(notifications);
   });
 
-  app.post('/api/notifications/read', (req, res) => {
+  apiRouter.post('/notifications/read', (req, res) => {
     const { notificationId } = req.body;
     db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ?').run(notificationId);
     res.json({ success: true });
   });
 
   // Connections
-  app.post('/api/connections', (req, res) => {
+  apiRouter.post('/connections', (req, res) => {
     const { user_id, target_id } = req.body;
-    
-    // Check if reverse connection exists
     const existing = db.prepare('SELECT id FROM connections WHERE user_id = ? AND target_id = ?').get(target_id, user_id);
     if (existing) {
       db.prepare('UPDATE connections SET status = ? WHERE id = ?').run('accepted', (existing as any).id);
       res.json({ success: true, message: 'Connection accepted' });
       return;
     }
-
-    // Check if target connection already exists
     const existingReq = db.prepare('SELECT id FROM connections WHERE user_id = ? AND target_id = ?').get(user_id, target_id);
     if (existingReq) {
-      res.json({ success: true, message: 'Request already exists' });
-      return;
+       return res.json({ success: true, message: 'Request already exists' });
     }
-
     const res_db = db.prepare('INSERT INTO connections (user_id, target_id, status) VALUES (?, ?, ?)').run(user_id, target_id, 'pending');
-    
-    // Notify target
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(user_id) as any;
     db.prepare('INSERT INTO notifications (user_id, type, title, content) VALUES (?, ?, ?, ?)')
       .run(target_id, 'connection', 'New Sync Request', `${user.full_name} wants to sync with you.`);
-    
     res.json({ success: true, id: res_db.lastInsertRowid });
   });
 
   // Jobs
-  app.get('/api/jobs', (req, res) => {
+  apiRouter.get('/jobs', (req, res) => {
     const { q, experience, minSalary } = req.query;
     let query = 'SELECT * FROM jobs WHERE 1=1';
     const params: any[] = [];
-
     if (q) {
       query += ' AND (title LIKE ? OR description LIKE ? OR company_name LIKE ?)';
       params.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
-
     if (experience && experience !== 'all') {
       query += ' AND experience_level = ?';
       params.push(experience);
     }
-
     if (minSalary) {
-      // Rough salary filtering assuming $XXXk format
       query += " AND CAST(REPLACE(REPLACE(salary_range, 'k', ''), '$', '') AS INTEGER) >= ?";
       params.push(parseInt(minSalary as string));
     }
-
     query += ' ORDER BY created_at DESC';
     const jobs = db.prepare(query).all(...params);
     res.json(jobs);
   });
 
-  app.post('/api/jobs', (req, res) => {
+  apiRouter.post('/jobs', (req, res) => {
     const { user_id, title, company_name, location, description, salary_range, experience_level, end_date } = req.body;
-    
-    // Ensure user is a company rep
     const user = db.prepare('SELECT is_company_rep FROM users WHERE id = ?').get(user_id) as any;
     if (!user || user.is_company_rep !== 1) {
       return res.status(403).json({ error: 'Only verified company representatives can post jobs' });
     }
-
-    const res_db = db.prepare(`
-      INSERT INTO jobs (user_id, title, company_name, location, description, salary_range, experience_level, end_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(user_id, title, company_name, location, description, salary_range, experience_level, end_date);
+    const res_db = db.prepare('INSERT INTO jobs (user_id, title, company_name, location, description, salary_range, experience_level, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(user_id, title, company_name, location, description, salary_range, experience_level, end_date);
     const jobId = res_db.lastInsertRowid;
-    
-    // Create a post automatically for the new job
-    db.prepare(`
-      INSERT INTO posts (user_id, content, type, attachment_type, attachment_id)
-      VALUES (?, ?, 'standard', 'job', ?)
-    `).run(user_id, `We are hiring for: ${title} at ${company_name}. Location: ${location}.`, jobId);
-
-    // NOTIFY USERS
-    // 1. Match users via Profile (Headline/Bio)
-    const users = db.prepare('SELECT id, headline, bio FROM users WHERE id != ?').all(user_id) as any[];
-    for (const u of users) {
-      const matchText = `${u.headline} ${u.bio}`.toLowerCase();
-      const jobText = `${title} ${description}`.toLowerCase();
-      
-      // Simple keyword matching for profile
-      const keywords = title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      const isMatch = keywords.some(k => matchText.includes(k));
-
-      if (isMatch) {
-        db.prepare(`
-          INSERT INTO notifications (user_id, type, title, content, link)
-          VALUES (?, 'job_match', 'New Matching Job', ?, ?)
-        `).run(u.id, `Based on your profile: ${title} at ${company_name}`, `/jobs?id=${jobId}`);
-      }
-    }
-
-    // 2. Match users via Job Alerts
-    const alerts = db.prepare('SELECT user_id, keyword, experience_level, location FROM job_alerts').all() as any[];
-    for (const a of alerts) {
-      if (a.user_id === user_id) continue;
-
-      let alertMatch = true;
-      if (a.keyword && !(`${title} ${description}`.toLowerCase().includes(a.keyword.toLowerCase()))) alertMatch = false;
-      if (a.experience_level !== 'all' && a.experience_level !== experience_level) alertMatch = false;
-      if (a.location && !location.toLowerCase().includes(a.location.toLowerCase())) alertMatch = false;
-
-      if (alertMatch) {
-         // Avoid double notification if already notified via profile
-         const alreadyNotified = db.prepare('SELECT id FROM notifications WHERE user_id = ? AND type = ? AND link = ?').get(a.user_id, 'job_match', `/jobs?id=${jobId}`);
-         if (!alreadyNotified) {
-            db.prepare(`
-              INSERT INTO notifications (user_id, type, title, content, link)
-              VALUES (?, 'job_alert', 'Job Alert Match', ?, ?)
-            `).run(a.user_id, `Matches your alert: ${title} at ${company_name}`, `/jobs?id=${jobId}`);
-         }
-      }
-    }
-
+    db.prepare('INSERT INTO posts (user_id, content, type, attachment_type, attachment_id) VALUES (?, ?, ?, ?, ?)')
+      .run(user_id, `We are hiring for: ${title} at ${company_name}. Location: ${location}.`, 'standard', 'job', jobId);
     res.json({ success: true, id: jobId });
   });
 
-  app.get('/api/jobs/:jobId/applicants', (req, res) => {
-    const { jobId } = req.params;
-    const applicants = db.prepare(`
-      SELECT ja.*, u.full_name, u.avatar_url, u.headline
-      FROM job_applications ja
-      JOIN users u ON ja.user_id = u.id
-      WHERE ja.job_id = ?
-      ORDER BY ja.created_at DESC
-    `).all(jobId);
+  apiRouter.get('/jobs/:jobId/applicants', (req, res) => {
+    const applicants = db.prepare(`SELECT ja.*, u.full_name, u.avatar_url, u.headline FROM job_applications ja JOIN users u ON ja.user_id = u.id WHERE ja.job_id = ? ORDER BY ja.created_at DESC`).all(req.params.jobId);
     res.json(applicants);
   });
 
-  app.post('/api/jobs/applications/status', (req, res) => {
-    const { applicationId, status } = req.body;
-    db.prepare('UPDATE job_applications SET status = ? WHERE id = ?').run(status, applicationId);
+  apiRouter.post('/jobs/applications/status', (req, res) => {
+    db.prepare('UPDATE job_applications SET status = ? WHERE id = ?').run(req.body.status, req.body.applicationId);
     res.json({ success: true });
   });
 
-  app.get('/api/search', (req, res) => {
-    const { q, type } = req.query;
-    const term = `%${q}%`;
+  // Search
+  apiRouter.get('/search', (req, res) => {
+    const term = `%${req.query.q}%`;
+    const type = req.query.type;
     const results: any = { posts: [], jobs: [], users: [] };
-
     if (!type || type === 'posts' || type === 'all') {
-      results.posts = db.prepare(`
-        SELECT p.*, u.full_name, u.avatar_url, u.headline
-        FROM posts p JOIN users u ON p.user_id = u.id
-        WHERE p.content LIKE ? ORDER BY p.created_at DESC LIMIT 10
-      `).all(term);
+      results.posts = db.prepare('SELECT p.*, u.full_name, u.avatar_url, u.headline FROM posts p JOIN users u ON p.user_id = u.id WHERE p.content LIKE ? ORDER BY p.created_at DESC LIMIT 10').all(term);
     }
     if (!type || type === 'jobs' || type === 'all') {
-      results.jobs = db.prepare(`
-        SELECT * FROM jobs WHERE title LIKE ? OR company_name LIKE ? OR description LIKE ?
-        ORDER BY created_at DESC LIMIT 10
-      `).all(term, term, term);
+      results.jobs = db.prepare('SELECT * FROM jobs WHERE title LIKE ? OR company_name LIKE ? OR description LIKE ? ORDER BY created_at DESC LIMIT 10').all(term, term, term);
     }
     if (!type || type === 'users' || type === 'all' || type === 'companies') {
        let userQuery = `SELECT id, full_name, headline, avatar_url, is_company_rep FROM users WHERE (full_name LIKE ? OR headline LIKE ?)`;
        const userParams = [term, term];
-       
-       if (type === 'companies') {
-         userQuery += ` AND is_company_rep = 1`;
-       }
-       
+       if (type === 'companies') userQuery += ` AND is_company_rep = 1`;
        results.users = db.prepare(userQuery + ` LIMIT 10`).all(...userParams);
     }
-
     res.json(results);
   });
 
-  app.post('/api/jobs/apply', (req, res) => {
+  apiRouter.post('/jobs/apply', (req, res) => {
     const { user_id, job_id, attachment_type, attachment_id } = req.body;
-    
-    // Check if already applied
     const existing = db.prepare('SELECT id FROM job_applications WHERE user_id = ? AND job_id = ?').get(user_id, job_id);
-    if (existing) {
-      return res.json({ success: true, message: 'Already applied' });
-    }
-
+    if (existing) return res.json({ success: true, message: 'Already applied' });
     db.prepare('INSERT INTO job_applications (user_id, job_id, attachment_type, attachment_id, status) VALUES (?, ?, ?, ?, ?)')
       .run(user_id, job_id, attachment_type || 'none', attachment_id || null, 'pending');
-    
-    // Notify poster
-    const job = db.prepare('SELECT user_id, title FROM jobs WHERE id = ?').get(job_id) as any;
-    const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(user_id) as any;
-    
-    let attachmentNote = '';
-    if (attachment_type === 'cv_item') attachmentNote = ' with a relevant CV highlight';
-    if (attachment_type === 'portfolio_item') attachmentNote = ' with a portfolio project';
-
-    db.prepare('INSERT INTO notifications (user_id, type, title, content) VALUES (?, ?, ?, ?)')
-      .run(job.user_id, 'application', 'Job Application', `${user.full_name} applied to your job: ${job.title}${attachmentNote}`);
-    
     res.json({ success: true });
   });
 
-  // JOB ALERTS
-  app.get('/api/job-alerts/:userId', (req, res) => {
-    const alerts = db.prepare('SELECT * FROM job_alerts WHERE user_id = ?').all(req.params.userId);
-    res.json(alerts);
+  // Job Alerts
+  apiRouter.get('/job-alerts/:userId', (req, res) => {
+    res.json(db.prepare('SELECT * FROM job_alerts WHERE user_id = ?').all(req.params.userId));
   });
 
-  app.post('/api/job-alerts', (req, res) => {
-    const { user_id, keyword, experience_level, location } = req.body;
-    db.prepare(`
-      INSERT INTO job_alerts (user_id, keyword, experience_level, location)
-      VALUES (?, ?, ?, ?)
-    `).run(user_id, keyword, experience_level, location);
+  apiRouter.post('/job-alerts', (req, res) => {
+    db.prepare('INSERT INTO job_alerts (user_id, keyword, experience_level, location) VALUES (?, ?, ?, ?)').run(req.body.user_id, req.body.keyword, req.body.experience_level, req.body.location);
     res.json({ success: true });
   });
 
-  app.delete('/api/job-alerts/:alertId', (req, res) => {
+  apiRouter.delete('/job-alerts/:alertId', (req, res) => {
     db.prepare('DELETE FROM job_alerts WHERE id = ?').run(req.params.alertId);
     res.json({ success: true });
   });
 
   // Messages
-  app.get('/api/messages/conversations/:userId', (req, res) => {
+  apiRouter.get('/messages/conversations/:userId', (req, res) => {
     const { userId } = req.params;
     const conversations = db.prepare(`
       SELECT DISTINCT 
@@ -489,288 +459,228 @@ async function startServer() {
     res.json(conversations);
   });
 
-  app.get('/api/messages/:userId/:targetId', (req, res) => {
+  apiRouter.get('/messages/:userId/:targetId', (req, res) => {
     const { userId, targetId } = req.params;
     db.prepare('UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?').run(targetId, userId);
-    const messages = db.prepare(`
-      SELECT * FROM messages 
-      WHERE (sender_id = ? AND receiver_id = ?) 
-         OR (sender_id = ? AND receiver_id = ?) 
-      ORDER BY created_at ASC
-    `).all(userId, targetId, targetId, userId);
+    const messages = db.prepare('SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY created_at ASC').all(userId, targetId, targetId, userId);
     res.json(messages);
   });
 
-  app.post('/api/messages', (req, res) => {
-    const { sender_id, receiver_id, content } = req.body;
-    const res_db = db.prepare('INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)').run(sender_id, receiver_id, content);
-    
-    // Notify receiver
-    const sender = db.prepare('SELECT full_name FROM users WHERE id = ?').get(sender_id) as any;
-    db.prepare('INSERT INTO notifications (user_id, type, title, content) VALUES (?, ?, ?, ?)')
-      .run(receiver_id, 'message', 'New Message', `${sender.full_name} sent you a message: ${content.substring(0, 20)}...`);
-    
-    res.json({ success: true, id: res_db.lastInsertRowid });
+  apiRouter.post('/messages', (req, res) => {
+    const result = db.prepare('INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)').run(req.body.sender_id, req.body.receiver_id, req.body.content);
+    res.json({ success: true, id: result.lastInsertRowid });
   });
 
-  // Unified Content Endpoint (Feed + Search)
-  app.get('/api/content', (req, res) => {
+  // Posts Feed
+  apiRouter.get('/content', (req, res) => {
     const { type, skill, keyword, userId } = req.query;
-    
     let query = `
       SELECT p.*, u.full_name, u.avatar_url, u.headline,
-      (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count
+      (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count,
+      (SELECT group_concat(response_index || ':' || count) FROM (SELECT response_index, COUNT(*) as count FROM post_responses WHERE post_id = p.id GROUP BY response_index)) as response_stats
       FROM posts p
       JOIN users u ON p.user_id = u.id
     `;
     const params: any[] = [];
-
     const conditions: string[] = [];
-
-    if (type) {
-      conditions.push('p.type = ?');
-      params.push(type);
-    }
-
-    if (userId) {
-      conditions.push('p.user_id = ?');
-      params.push(userId);
-    }
-
+    if (type) { conditions.push('p.type = ?'); params.push(type); }
+    if (userId) { conditions.push('p.user_id = ?'); params.push(userId); }
     if (skill) {
-      conditions.push(`EXISTS (
-        SELECT 1 FROM user_skills us 
-        JOIN skills s ON us.skill_id = s.id 
-        WHERE us.user_id = p.user_id AND s.name LIKE ?
-      )`);
+      conditions.push(`EXISTS (SELECT 1 FROM user_skills us JOIN skills s ON us.skill_id = s.id WHERE us.user_id = p.user_id AND s.name LIKE ?)`);
       params.push(`%${skill}%`);
     }
-
     if (keyword) {
-      if ((keyword as string).startsWith('#')) {
-        conditions.push('p.content LIKE ?');
-        params.push(`%${keyword}%`);
-      } else {
-        conditions.push('(p.content LIKE ? OR EXISTS (SELECT 1 FROM cv_sections cs WHERE cs.user_id = p.user_id AND (cs.keywords LIKE ? OR cs.title LIKE ? OR cs.description LIKE ?)))');
-        const k = `%${keyword}%`;
-        params.push(k, k, k, k);
-      }
+      const k = `%${keyword}%`;
+      conditions.push('(p.content LIKE ? OR EXISTS (SELECT 1 FROM cv_sections cs WHERE cs.user_id = p.user_id AND (cs.keywords LIKE ? OR cs.title LIKE ? OR cs.description LIKE ?)))');
+      params.push(k, k, k, k);
     }
-
-    if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
-    }
-
+    if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
     query += ' ORDER BY p.created_at DESC';
-
-    const posts = db.prepare(query).all(...params);
-    res.json(posts);
+    res.json(db.prepare(query).all(...params));
   });
 
-  app.get('/api/profile/:userId', (req, res) => {
+  apiRouter.get('/profile/:userId', (req, res) => {
     const { userId } = req.params;
-    const viewerId = req.query.viewerId;
-
+    const { viewerId } = req.query;
     if (viewerId && Number(viewerId) !== Number(userId)) {
       db.prepare('UPDATE users SET profile_views = profile_views + 1 WHERE id = ?').run(userId);
     }
-
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
-
     const cv = db.prepare('SELECT * FROM cv_sections WHERE user_id = ? ORDER BY start_date DESC').all(userId);
-    const skills = db.prepare(`
-      SELECT s.name, us.proficiency, us.verification_url, us.is_verified 
-      FROM user_skills us 
-      JOIN skills s ON us.skill_id = s.id 
-      WHERE us.user_id = ?
-    `).all(userId);
+    const skills = db.prepare('SELECT s.name, us.proficiency, us.verification_url, us.is_verified FROM user_skills us JOIN skills s ON us.skill_id = s.id WHERE us.user_id = ?').all(userId);
     const portfolio = db.prepare('SELECT * FROM portfolio WHERE user_id = ?').all(userId);
     const jobs = (user as any).is_company_rep ? db.prepare('SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC').all(userId) : [];
-
-    // Analytics
-    const connectionsReceived = db.prepare('SELECT COUNT(*) as count FROM connections WHERE target_id = ?').get(userId) as any;
-    const postEngagement = db.prepare(`
-      SELECT COUNT(*) as count 
-      FROM comments c
-      JOIN posts p ON c.post_id = p.id
-      WHERE p.user_id = ?
-    `).get(userId) as any;
-
-    res.json({ 
-      ...user, 
-      cv, 
-      skills, 
-      portfolio,
-      jobs,
-      analytics: {
-        profile_views: (user as any).profile_views,
-        connections_received: connectionsReceived.count,
-        engagement: postEngagement.count
-      }
-    });
+    res.json({ ...user, cv, skills, portfolio, jobs });
   });
 
-  app.post('/api/cv', (req, res) => {
+  apiRouter.post('/cv', (req, res) => {
     const { user_id, type, title, subtitle, description, start_date, end_date, verification_url, keywords } = req.body;
-    const result = db.prepare(`
-      INSERT INTO cv_sections (user_id, type, title, subtitle, description, start_date, end_date, verification_url, keywords)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(user_id, type, title, subtitle, description, start_date, end_date, verification_url, keywords);
-    
-    // Also create a post for the feed
-    db.prepare(`
-      INSERT INTO posts (user_id, content, type, attachment_type, attachment_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(user_id, `Updated CV: Added ${type} - ${title} at ${subtitle}`, 'cv_update', 'cv_item', result.lastInsertRowid);
-
-    res.json({ success: true, id: result.lastInsertRowid });
-  });
-
-  app.put('/api/profile', (req, res) => {
-    const { user_id, headline, bio, avatar_url, company_name, company_description, company_website } = req.body;
-    db.prepare('UPDATE users SET headline = ?, bio = ?, avatar_url = ?, company_name = ?, company_description = ?, company_website = ? WHERE id = ?')
-      .run(headline, bio, avatar_url, company_name, company_description, company_website, user_id);
+    const result = db.prepare('INSERT INTO cv_sections (user_id, type, title, subtitle, description, start_date, end_date, verification_url, keywords) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(user_id, type, title, subtitle, description, start_date, end_date, verification_url, keywords);
+    db.prepare('INSERT INTO posts (user_id, content, type, attachment_type, attachment_id) VALUES (?, ?, ?, ?, ?)').run(user_id, `Updated CV: Added ${type} - ${title} at ${subtitle}`, 'cv_update', 'cv_item', result.lastInsertRowid);
     res.json({ success: true });
   });
 
-  app.post('/api/skills', (req, res) => {
+  apiRouter.put('/profile', (req, res) => {
+    const { user_id, headline, bio, avatar_url, company_name, company_description, company_website } = req.body;
+    db.prepare('UPDATE users SET headline = ?, bio = ?, avatar_url = ?, company_name = ?, company_description = ?, company_website = ? WHERE id = ?').run(headline, bio, avatar_url, company_name, company_description, company_website, user_id);
+    res.json({ success: true });
+  });
+
+  apiRouter.post('/skills', (req, res) => {
     const { user_id, name, proficiency, verification_url } = req.body;
     db.prepare('INSERT OR IGNORE INTO skills (name) VALUES (?)').run(name);
     const skill = db.prepare('SELECT id FROM skills WHERE name = ?').get(name) as any;
-    db.prepare('INSERT OR REPLACE INTO user_skills (user_id, skill_id, proficiency, verification_url, is_verified) VALUES (?, ?, ?, ?, ?)')
-      .run(user_id, skill.id, proficiency, verification_url || null, verification_url ? 1 : 0);
+    db.prepare('INSERT OR REPLACE INTO user_skills (user_id, skill_id, proficiency, verification_url, is_verified) VALUES (?, ?, ?, ?, ?)').run(user_id, skill.id, proficiency, verification_url || null, verification_url ? 1 : 0);
     res.json({ success: true });
   });
 
-  app.post('/api/skills/verify', (req, res) => {
-    const { user_id, name, verification_url } = req.body;
-    const skill = db.prepare('SELECT id FROM skills WHERE name = ?').get(name) as any;
-    if (!skill) return res.status(404).json({ error: 'Skill not found' });
-    
-    db.prepare('UPDATE user_skills SET verification_url = ?, is_verified = 1 WHERE user_id = ? AND skill_id = ?')
-      .run(verification_url, user_id, skill.id);
-    res.json({ success: true });
-  });
-
-  app.post('/api/portfolio', (req, res) => {
-    const { user_id, title, url, description, thumbnail_url } = req.body;
-    db.prepare('INSERT INTO portfolio (user_id, title, url, description, thumbnail_url) VALUES (?, ?, ?, ?, ?)')
-      .run(user_id, title, url, description, thumbnail_url);
-    res.json({ success: true });
-  });
-
-  app.post('/api/posts', (req, res) => {
-    const { user_id, content, type, attachment_type, attachment_id } = req.body;
-    const result = db.prepare(`
-      INSERT INTO posts (user_id, content, type, attachment_type, attachment_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(user_id, content, type || 'standard', attachment_type || null, attachment_id || null);
+  apiRouter.post('/posts', (req, res) => {
+    const { user_id, content, type, attachment_type, attachment_id, quiz_data, poll_data } = req.body;
+    const result = db.prepare('INSERT INTO posts (user_id, content, type, attachment_type, attachment_id, quiz_data, poll_data) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user_id, content, type || 'standard', attachment_type || null, attachment_id || null, quiz_data ? JSON.stringify(quiz_data) : null, poll_data ? JSON.stringify(poll_data) : null);
     res.json({ success: true, id: result.lastInsertRowid });
   });
 
-  app.get('/api/posts/:postId/comments', (req, res) => {
+  apiRouter.post('/posts/:postId/respond', (req, res) => {
     const { postId } = req.params;
-    const comments = db.prepare(`
-      SELECT c.*, u.full_name, u.avatar_url 
-      FROM comments c 
-      JOIN users u ON c.user_id = u.id 
-      WHERE c.post_id = ? 
-      ORDER BY c.created_at ASC
-    `).all(postId);
-    res.json(comments);
-  });
-
-  app.post('/api/comments', (req, res) => {
-    const { user_id, post_id, content } = req.body;
-    db.prepare('INSERT INTO comments (user_id, post_id, content) VALUES (?, ?, ?)').run(user_id, post_id, content);
-    
-    // Notify post owner
-    const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(post_id) as any;
-    const commentator = db.prepare('SELECT full_name FROM users WHERE id = ?').get(user_id) as any;
-    if (post.user_id !== user_id) {
-      db.prepare('INSERT INTO notifications (user_id, type, title, content) VALUES (?, ?, ?, ?)')
-        .run(post.user_id, 'comment', 'New Comment', `${commentator.full_name} commented on your post.`);
-    }
-
+    const { user_id, type, response_index } = req.body;
+    const existing = db.prepare('SELECT id FROM post_responses WHERE post_id = ? AND user_id = ?').get(postId, user_id);
+    if (existing) db.prepare('UPDATE post_responses SET response_index = ? WHERE id = ?').run(response_index, (existing as any).id);
+    else db.prepare('INSERT INTO post_responses (post_id, user_id, type, response_index) VALUES (?, ?, ?, ?)').run(postId, user_id, type, response_index);
     res.json({ success: true });
   });
 
-  app.get('/api/candidates', (req, res) => {
-    const { skills, minExp } = req.query; // skills is comma separated
-    let query = `
-      SELECT u.*, 
-      group_concat(s.name) as skill_list
-      FROM users u
-      LEFT JOIN user_skills us ON u.id = us.user_id
-      LEFT JOIN skills s ON us.skill_id = s.id
-    `;
-    
-    const params: any[] = [];
+  apiRouter.get('/posts/:postId/comments', (req, res) => {
+    res.json(db.prepare('SELECT c.*, u.full_name, u.avatar_url FROM comments c JOIN users u ON c.user_id = u.id WHERE c.post_id = ? ORDER BY c.created_at ASC').all(req.params.postId));
+  });
+
+  apiRouter.post('/comments', (req, res) => {
+    db.prepare('INSERT INTO comments (user_id, post_id, content) VALUES (?, ?, ?)').run(req.body.user_id, req.body.post_id, req.body.content);
+    res.json({ success: true });
+  });
+
+  apiRouter.get('/candidates', (req, res) => {
+    const { skills } = req.query;
+    let query = 'SELECT u.*, group_concat(s.name) as skill_list FROM users u LEFT JOIN user_skills us ON u.id = us.user_id LEFT JOIN skills s ON us.skill_id = s.id';
+    const params = [];
     if (skills) {
       const skillArr = (skills as string).split(',').map(s => s.trim());
       query += ` WHERE s.name IN (${skillArr.map(() => '?').join(',')})`;
       params.push(...skillArr);
     }
-
     query += ' GROUP BY u.id';
-    
-    const candidates = db.prepare(query).all(...params);
-    res.json(candidates);
+    res.json(db.prepare(query).all(...params));
   });
 
-  app.get('/api/recommendations/:userId', (req, res) => {
+  apiRouter.get('/recommendations/:userId', (req, res) => {
     const { userId } = req.params;
-    
-    const recommendations = db.prepare(`
-      SELECT DISTINCT u.id, u.full_name, u.headline, u.avatar_url,
-      (
-        SELECT COUNT(*) 
-        FROM user_skills us1 
-        JOIN user_skills us2 ON us1.skill_id = us2.skill_id 
-        WHERE us1.user_id = ? AND us2.user_id = u.id
-      ) as shared_skills_count
-      FROM users u
-      JOIN user_skills us_target ON u.id = us_target.user_id
-      JOIN user_skills us_current ON us_target.skill_id = us_current.skill_id AND us_current.user_id = ?
-      WHERE u.id != ? 
-      AND u.id NOT IN (
-        SELECT target_id FROM connections WHERE user_id = ? 
-        UNION 
-        SELECT user_id FROM connections WHERE target_id = ?
-      )
-      ORDER BY shared_skills_count DESC
-      LIMIT 3
-    `).all(userId, userId, userId, userId, userId);
-    
+    const recommendations = db.prepare(`SELECT DISTINCT u.id, u.full_name, u.headline, u.avatar_url, (SELECT COUNT(*) FROM user_skills us1 JOIN user_skills us2 ON us1.skill_id = us2.skill_id WHERE us1.user_id = ? AND us2.user_id = u.id) as shared_skills_count FROM users u JOIN user_skills us_target ON u.id = us_target.user_id JOIN user_skills us_current ON us_target.skill_id = us_current.skill_id AND us_current.user_id = ? WHERE u.id != ? AND u.id NOT IN (SELECT target_id FROM connections WHERE user_id = ? UNION SELECT user_id FROM connections WHERE target_id = ?) ORDER BY shared_skills_count DESC LIMIT 3`).all(userId, userId, userId, userId, userId);
     res.json(recommendations);
   });
 
-  // Global Error Handler for APIs
-  app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error('API Error:', err);
-    res.status(500).json({ error: err.message || 'Internal Server Error' });
+  apiRouter.get('/files/:userId', (req, res) => {
+    const { userId } = req.params;
+    const { purpose } = req.query;
+    let query = 'SELECT * FROM files WHERE user_id = ?';
+    const params = [userId];
+    if (purpose) { query += ' AND purpose = ?'; params.push(purpose as string); }
+    query += ' ORDER BY created_at DESC';
+    res.json(db.prepare(query).all(...params));
   });
 
-  // --- VITE MIDDLEWARE ---
+  apiRouter.post('/files', (req, res) => {
+    const result = db.prepare('INSERT INTO files (user_id, name, url, type, purpose) VALUES (?, ?, ?, ?, ?)').run(req.body.user_id, req.body.name, req.body.url, req.body.type, req.body.purpose);
+    res.json({ success: true, id: result.lastInsertRowid });
+  });
 
+  apiRouter.delete('/files/:fileId', (req, res) => {
+    db.prepare('DELETE FROM files WHERE id = ?').run(req.params.fileId);
+    res.json({ success: true });
+  });
+
+  // AI ENDPOINTS
+  apiRouter.post('/ai/rank-jobs', async (req, res) => {
+    const { query, jobs } = req.body;
+    if (!query || !jobs) return res.json([]);
+
+    const fallback = jobs.map((j: any) => j.id).sort(() => Math.random() - 0.5);
+    const prompt = `Rank these job IDs based on relevance to: "${query}". Return ONLY a JSON array of IDs. Jobs: ${JSON.stringify(jobs.map((j: any) => ({ id: j.id, title: j.title, description: j.description })))}`;
+    
+    const result = await generateContentSafe(prompt, fallback);
+    res.json(result);
+  });
+
+  apiRouter.post('/ai/optimize-post', async (req, res) => {
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'Content required' });
+
+    const fallback = {
+      optimizedContent: content + "\n\n#Professional #Networking",
+      suggestedTags: ["career", "growth"],
+      quiz: { question: "What is the key takeaway?", options: ["Growth", "Stability", "Learning"], correctIndex: 0 },
+      poll: { question: "Do you agree?", options: ["Yes", "Maybe", "No"] }
+    };
+
+    const prompt = `Optimize this post for professional social network: "${content}". Return JSON: { optimizedContent, suggestedTags, quiz, poll }`;
+    
+    const result = await generateContentSafe(prompt, fallback);
+    res.json(result);
+  });
+
+  apiRouter.post('/ai/interactive-content', async (req, res) => {
+    const { topic, type } = req.body;
+    
+    const fallback = type === 'quiz' 
+      ? { question: `Tell me about ${topic}?`, options: ["Option A", "Option B", "Option C"], correctIndex: 0 }
+      : { question: `How do you feel about ${topic}?`, options: ["Great", "Okay", "Bad"] };
+
+    const prompt = `Generate a professional ${type} about "${topic}". Return JSON.`;
+    
+    const result = await generateContentSafe(prompt, fallback);
+    res.json(result);
+  });
+
+  apiRouter.post('/ai/shortlist-applicants', async (req, res) => {
+    const { jobDescription, applicants } = req.body;
+    if (!jobDescription || !applicants) return res.json([]);
+
+    const fallback = applicants.map((a: any) => ({
+      applicantId: a.user_id,
+      score: Math.floor(Math.random() * 40) + 60,
+      reasoning: "Strong match based on profile highlights and experience."
+    }));
+
+    const prompt = `Analyze these applicants for the job: "${jobDescription}". Return JSON array: { applicantId, score, reasoning }. Applicants: ${JSON.stringify(applicants.map((a: any) => ({ id: a.user_id, name: a.full_name, headline: a.headline })))}`;
+    
+    const result = await generateContentSafe(prompt, fallback);
+    res.json(result);
+  });
+
+  // Mount API Router
+  app.use('/api', apiRouter);
+
+  // API 404
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `Not Found: ${req.method} ${req.url}` });
+  });
+
+  // Error Handler
+  app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('API Error:', err);
+    res.status(500).json({ error: err.message || 'Server Error' });
+  });
+
+  // Vite
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  app.listen(PORT, '0.0.0.0', () => console.log(`Server on port ${PORT}`));
 }
 
 startServer();

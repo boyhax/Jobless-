@@ -13,8 +13,20 @@ export const fetchAPI = async (endpoint: string, options: RequestInit = {}) => {
       ...options.headers,
     },
   });
-  if (!res.ok) throw new Error('API Error');
+  
   const text = await res.text();
+  
+  if (!res.ok) {
+    let errorMessage = 'API Error';
+    try {
+      const errorData = JSON.parse(text);
+      errorMessage = errorData.error || errorData.message || errorMessage;
+    } catch (e) {
+      errorMessage = `API Error: ${res.status} ${res.statusText}`;
+    }
+    throw new Error(errorMessage);
+  }
+
   try {
     return JSON.parse(text);
   } catch (err) {

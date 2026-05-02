@@ -10,6 +10,7 @@ import {
   Home, 
   MessageSquare, 
   Plus, 
+  X,
   Link as LinkIcon, 
   ExternalLink,
   ChevronRight,
@@ -28,10 +29,17 @@ import {
   TrendingUp,
   Layers,
   Menu,
-  Globe
+  Globe,
+  Sparkles,
+  Vote,
+  Trophy,
+  Paperclip,
+  Trash2,
+  FolderOpen
 } from 'lucide-react';
 import { cn, fetchAPI } from './lib/utils';
-import { User, Post, CVSection, Skill, PortfolioItem, Comment } from './types';
+import { User, Post, CVSection, Skill, PortfolioItem, Comment, FileItem } from './types';
+import { geminiService } from './services/geminiService';
 import { formatDistanceToNow } from 'date-fns';
 import Markdown from 'react-markdown';
 import { useTranslation } from 'react-i18next';
@@ -81,10 +89,18 @@ const Avatar = ({ src, name, size = 'md', className }: { src?: string | null; na
 
 // --- Views ---
 
-const PostCard = ({ post, onComment, isExpanded, currentUser, onApply }: { post: Post; onComment: (postId: number) => void; isExpanded?: boolean; currentUser: User; onApply: (postId: number) => void }) => {
+const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond }: { 
+  post: Post; 
+  onComment: (postId: number) => void; 
+  isExpanded?: boolean; 
+  currentUser: User; 
+  onApply: (postId: number) => void;
+  onRespond: (postId: number, type: 'quiz' | 'poll', index: number) => void;
+}) => {
   const { t } = useTranslation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [showQuizResult, setShowQuizResult] = useState(false);
 
   const loadComments = async () => {
     const data = await fetchAPI(`/api/posts/${post.id}/comments`);
@@ -126,6 +142,76 @@ const PostCard = ({ post, onComment, isExpanded, currentUser, onApply }: { post:
              <Markdown>{post.content}</Markdown>
           </div>
         </div>
+
+        {post.poll_data && (
+          <div className="mb-4 bg-blue-50/20 border border-blue-50 rounded-xl p-4">
+             <div className="flex items-center gap-2 mb-3">
+               <Vote className="w-3.5 h-3.5 text-blue-500" />
+               <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Career Poll</span>
+             </div>
+             <p className="text-xs font-bold mb-3">{JSON.parse(post.poll_data).question}</p>
+             <div className="space-y-2">
+               {JSON.parse(post.poll_data).options.map((opt: string, i: number) => {
+                  const stats = post.response_stats?.split(',').map(s => s.split(':')) || [];
+                  const votes = Number(stats.find(s => s[0] === String(i))?.[1] || 0);
+                  const total = stats.reduce((acc, curr) => acc + Number(curr[1]), 0);
+                  const percent = total > 0 ? Math.round((votes / total) * 100) : 0;
+                  
+                  return (
+                    <button 
+                      key={i}
+                      onClick={() => onRespond(post.id, 'poll', i)}
+                      className="w-full text-left p-2 rounded-lg bg-white border border-blue-100 hover:border-blue-400 text-xs transition-all relative overflow-hidden"
+                    >
+                      <div className="absolute inset-y-0 left-0 bg-blue-100/50 transition-all duration-1000" style={{ width: `${percent}%` }} />
+                      <div className="flex justify-between items-center relative z-10 w-full">
+                        <span className="font-medium">{opt}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-blue-400">{votes}</span>
+                          <span className="text-[10px] text-blue-600 font-bold">{percent}%</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+               })}
+             </div>
+          </div>
+        )}
+
+        {post.quiz_data && (
+          <div className="mb-4 bg-yellow-50/20 border border-yellow-50 rounded-xl p-4">
+             <div className="flex items-center gap-2 mb-3">
+               <Trophy className="w-3.5 h-3.5 text-yellow-500" />
+               <span className="text-[10px] font-bold text-yellow-600 uppercase tracking-widest">Skill Quiz</span>
+             </div>
+             <p className="text-xs font-bold mb-3">{JSON.parse(post.quiz_data).question}</p>
+             <div className="space-y-2">
+               {JSON.parse(post.quiz_data).options.map((opt: string, i: number) => {
+                  const quizParsed = JSON.parse(post.quiz_data!);
+                  const isCorrect = quizParsed.correctIndex === i;
+                  return (
+                    <button 
+                      key={i}
+                      onClick={() => {
+                        onRespond(post.id, 'quiz', i);
+                        setShowQuizResult(true);
+                      }}
+                      className={cn(
+                        "w-full text-left p-2 rounded-lg bg-white border border-yellow-100 text-xs transition-all",
+                        showQuizResult && isCorrect ? "bg-green-50 border-green-200 text-green-700 ring-1 ring-green-200" : 
+                        showQuizResult && !isCorrect ? "opacity-40" : "hover:border-yellow-400"
+                      )}
+                    >
+                      <div className="flex justify-between items-center w-full">
+                        <span className={cn(showQuizResult && isCorrect && "font-bold")}>{opt}</span>
+                        {showQuizResult && isCorrect && <CheckCircle2 className="w-3 h-3 text-green-500" />}
+                      </div>
+                    </button>
+                  );
+               })}
+             </div>
+          </div>
+        )}
 
         {post.attachment_type === 'cv_item' && (
           <div className="bg-neutral-50 border border-neutral-100 rounded-lg p-3 flex items-center gap-3 mb-4">
@@ -242,6 +328,20 @@ export default function App() {
   const [isRightOpen, setIsRightOpen] = useState(false);
   const [verifyingSkillName, setVerifyingSkillName] = useState<string | null>(null);
   const [verificationUrlInput, setVerificationUrlInput] = useState('');
+
+  // AI States
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiApplicantsFeedback, setAiApplicantsFeedback] = useState<any[] | null>(null);
+  const [aiOptimizedPost, setAiOptimizedPost] = useState<any>(null);
+
+  // Slash Command and Interactive Elements
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showFileGallery, setShowFileGallery] = useState(false);
+  const [userFiles, setUserFiles] = useState<FileItem[]>([]);
+  const [galleryFilter, setGalleryFilter] = useState<string>('all');
+  const [postQuiz, setPostQuiz] = useState<{ question: string, options: string[], correctIndex: number } | null>(null);
+  const [postPoll, setPostPoll] = useState<{ question: string, options: string[] } | null>(null);
 
   const login = async (email: string) => {
     try {
@@ -481,6 +581,38 @@ export default function App() {
     }
   };
 
+  const fetchUserFiles = async () => {
+    if (!currentUser) return;
+    try {
+      const data = await fetchAPI(`/api/files/${currentUser.id}`);
+      setUserFiles(data);
+    } catch (err) {
+       console.error(err);
+    }
+  };
+
+  const uploadFile = async (name: string, url: string, type: string, purpose: string) => {
+    if (!currentUser) return;
+    try {
+      await fetchAPI('/api/files', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: currentUser.id, name, url, type, purpose })
+      });
+      fetchUserFiles();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const deleteFile = async (fileId: number) => {
+    try {
+      await fetchAPI(`/api/files/${fileId}`, { method: 'DELETE' });
+      fetchUserFiles();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchJobAlerts = async () => {
     if (!currentUser) return;
     try {
@@ -533,6 +665,72 @@ export default function App() {
       body: JSON.stringify({ notificationId: id })
     });
     fetchNotifications();
+  };
+
+  // AI Functionality
+  const handleAiRankJobs = async () => {
+    if (!searchQuery && jobFilters.q === '') return;
+    setIsAiLoading(true);
+    try {
+      const ranked = await geminiService.rankJobs(jobs, searchQuery || jobFilters.q);
+      setJobs(ranked);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiShortlistApplicants = async () => {
+    if (!selectedJobId) return;
+    const currentJob = jobs.find(j => j.id === selectedJobId);
+    if (!currentJob) return;
+    
+    setIsAiLoading(true);
+    try {
+      const feedback = await geminiService.shortlistApplicants(currentJob.description, applicants);
+      setAiApplicantsFeedback(feedback);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiOptimizePost = async () => {
+    if (!postContent) return;
+    setIsAiLoading(true);
+    try {
+      const optimization = await geminiService.optimizePost(postContent);
+      if (optimization) {
+        setAiOptimizedPost(optimization);
+        setPostContent(optimization.optimizedContent);
+      }
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiGenerateInteractive = async (type: 'quiz' | 'poll') => {
+    if (!postContent) return;
+    setIsAiLoading(true);
+    try {
+      const result = await geminiService.generateInteractiveContent(postContent, type);
+      if (result) {
+        if (type === 'quiz') setPostQuiz(result);
+        else setPostPoll(result);
+      }
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handlePostResponse = async (postId: number, type: 'quiz' | 'poll', index: number) => {
+    try {
+      await fetchAPI(`/api/posts/${postId}/respond`, {
+        method: 'POST',
+        body: JSON.stringify({ user_id: currentUser!.id, type, response_index: index })
+      });
+      fetchFeed();
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const [showCVForm, setShowCVForm] = useState(false);
@@ -620,31 +818,37 @@ export default function App() {
     }
   };
 
-  const [attachmentType, setAttachmentType] = useState<'none' | 'cv_item' | 'link' | 'discussion'>('none');
+  const [attachmentType, setAttachmentType] = useState<'none' | 'cv_item' | 'portfolio_item' | 'link' | 'discussion'>('none');
   const [attachmentId, setAttachmentId] = useState<number | null>(null);
   const [postContent, setPostContent] = useState('');
+  const [isPostFocused, setIsPostFocused] = useState(false);
 
   const submitPost = async () => {
-    if (!postContent || !currentUser) return;
+    if ((!postContent && !postQuiz && !postPoll) || !currentUser) return;
     await fetchAPI('/api/posts', {
       method: 'POST',
       body: JSON.stringify({ 
         user_id: currentUser.id, 
         content: postContent,
         attachment_type: attachmentType === 'none' ? null : attachmentType,
-        attachment_id: attachmentId 
+        attachment_id: attachmentId,
+        quiz_data: postQuiz,
+        poll_data: postPoll
       })
     });
     setPostContent('');
     setAttachmentType('none');
     setAttachmentId(null);
+    setPostQuiz(null);
+    setPostPoll(null);
+    setAiOptimizedPost(null);
     fetchFeed();
   };
 
   if (!currentUser) return <div className="flex items-center justify-center h-screen bg-neutral-50 font-mono text-neutral-400">SYNCING_IDENTITY...</div>;
 
   return (
-    <div className="h-screen bg-neutral-50 text-neutral-900 font-sans selection:bg-neutral-200 flex overflow-hidden">
+    <div className={cn("h-screen bg-neutral-50 text-neutral-900 font-sans selection:bg-neutral-200 flex overflow-hidden", i18n.language === 'ar' && "rtl")} dir={i18n.language === 'ar' ? 'rtl' : 'ltr'}>
       
       {/* LEFT COLUMN: DISCOVER / SEARCH */}
       <AnimatePresence>
@@ -683,6 +887,7 @@ export default function App() {
               >
                 <option value="en">EN</option>
                 <option value="es">ES</option>
+                <option value="ar">AR</option>
               </select>
               <select 
                 className="text-[10px] bg-neutral-100 border-none rounded-lg px-2 py-1 outline-none text-neutral-500 font-mono"
@@ -796,32 +1001,55 @@ export default function App() {
               <Menu className="w-5 h-5 text-neutral-600" />
             </button>
             
-            <div className="relative flex-1 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
-              <input 
-                type="text" 
-                placeholder={t('App.search_placeholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-neutral-200 rounded-2xl pl-12 pr-28 py-3 text-sm focus:ring-4 focus:ring-black/5 focus:border-neutral-300 transition-all outline-none shadow-sm"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
-                <div className="w-[1px] h-4 bg-neutral-200 mr-1" />
-                <select 
-                  className="text-[9px] bg-transparent border-none rounded-lg px-2 py-1.5 outline-none text-neutral-500 font-bold uppercase tracking-widest hover:text-black transition-colors cursor-pointer appearance-none"
-                  value={searchType}
-                  onChange={(e: any) => {
-                    const val = e.target.value;
-                    setSearchType(val);
-                    if (val === 'jobs') setActiveMainTab('jobs');
-                    else if (val === 'all' || val === 'posts' || val === 'users') setActiveMainTab('feed');
-                  }}
-                >
-                  <option value="all">Global</option>
-                  <option value="posts">Feed</option>
-                  <option value="jobs">Jobs</option>
-                  <option value="users">Users</option>
-                </select>
+            <div className="flex-1 flex flex-col gap-2">
+              <div className="relative group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
+                <input 
+                  type="text" 
+                  placeholder={t('App.search_placeholder')}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-neutral-200 rounded-2xl pl-12 pr-12 py-3 text-sm focus:ring-4 focus:ring-black/5 focus:border-neutral-300 transition-all outline-none shadow-sm"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+                  {searchType === 'jobs' && (
+                    <button 
+                      onClick={handleAiRankJobs}
+                      disabled={isAiLoading || !searchQuery}
+                      className="p-2 text-blue-500 hover:text-blue-600 disabled:opacity-30 transition-colors"
+                      title={t('App.ai_rank')}
+                    >
+                      <Sparkles className={cn("w-4 h-4", isAiLoading && "animate-spin")} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Search Tabs */}
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
+                {[
+                  { id: 'all', label: 'Global' },
+                  { id: 'posts', label: 'Feed' },
+                  { id: 'jobs', label: 'Jobs' },
+                  { id: 'users', label: 'Users' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setSearchType(tab.id as any);
+                      if (tab.id === 'jobs') setActiveMainTab('jobs');
+                      else if (['all', 'posts', 'users'].includes(tab.id)) setActiveMainTab('feed');
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap",
+                      searchType === tab.id 
+                        ? "bg-black text-white shadow-md shadow-black/10 scale-105" 
+                        : "text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -902,71 +1130,339 @@ export default function App() {
               )}
 
               {/* Box to Post */}
-              <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden p-4">
-                <div className="flex gap-3 mb-4">
+              <div className={cn(
+                "bg-white rounded-2xl shadow-sm transition-all duration-300 relative px-4 pt-4 pb-2"
+              )}>
+                <div className="flex gap-3">
                   <Avatar src={currentUser.avatar_url} name={currentUser.full_name} size="sm" />
-                  <textarea 
-                    placeholder="What's moving in your career? Use #tags or /attach..." 
-                    value={postContent}
-                    onChange={(e) => setPostContent(e.target.value)}
-                    className="flex-1 border-none focus:ring-0 text-xs py-2 min-h-[60px] resize-none"
-                  />
+                  <div className="flex-1 flex flex-col relative min-h-[44px]">
+                    <textarea 
+                      placeholder="What's moving in your career? Use #tags or / to add quiz/poll..." 
+                      value={postContent}
+                      onFocus={() => setIsPostFocused(true)}
+                      onBlur={() => {
+                        // Delay blur to allow clicking menu items
+                        setTimeout(() => setIsPostFocused(false), 200);
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPostContent(val);
+                        if (val.endsWith('/')) {
+                          setShowSlashMenu(true);
+                        } else if (showSlashMenu && !val.includes('/')) {
+                          setShowSlashMenu(false);
+                        }
+                      }}
+                      className={cn(
+                        "w-full border-none focus:ring-0 text-xs py-2 resize-y transition-all duration-300 bg-transparent",
+                        isPostFocused ? "min-h-[120px]" : "min-h-[44px]"
+                      )}
+                    />
+
+                    {showSlashMenu && (
+                      <div className="absolute left-0 bottom-full mb-2 bg-white border border-neutral-200 rounded-xl shadow-xl p-1 z-50 min-w-[140px] animate-in fade-in slide-in-from-bottom-2">
+                        <p className="px-3 py-1.5 text-[7px] font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-50">Career Interactive</p>
+                        <button 
+                          onClick={() => {
+                            setPostPoll({ question: '', options: ['', ''] });
+                            setPostContent(postContent.replace(/\/$/, ''));
+                            setShowSlashMenu(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
+                        >
+                          <Vote className="w-3 h-3 text-blue-500" />
+                          Create Poll
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setPostQuiz({ question: '', options: ['', ''], correctIndex: 0 });
+                            setPostContent(postContent.replace(/\/$/, ''));
+                            setShowSlashMenu(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
+                        >
+                          <Trophy className="w-3 h-3 text-yellow-500" />
+                          Create Quiz
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Integrated Action Buttons */}
+                    <div className={cn(
+                      "flex items-center justify-between mt-2 pt-2 transition-all border-t border-neutral-50",
+                      isPostFocused ? "opacity-100" : "opacity-60 scale-95 origin-left"
+                    )}>
+                      <div className="flex items-center gap-1 relative">
+                        <button 
+                          onClick={() => setShowAttachMenu(!showAttachMenu)}
+                          className={cn(
+                            "p-1.5 rounded-lg transition-all flex items-center gap-2 shrink-0",
+                            showAttachMenu ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-100"
+                          )}
+                          title="Attach Item"
+                        >
+                          <Plus className={cn("w-3.5 h-3.5 transition-transform", showAttachMenu && "rotate-45")} />
+                          <span className="text-[9px] font-bold hidden md:inline uppercase tracking-widest">Attach</span>
+                        </button>
+
+                        {showAttachMenu && (
+                          <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-300">
+                            <button 
+                              onClick={() => { setAttachmentType('cv_item'); setShowAttachMenu(false); }}
+                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                              title="CV Entry"
+                            >
+                              <FileText className="w-4 h-4 text-blue-500" />
+                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">CV</span>
+                            </button>
+                            <button 
+                              onClick={() => { setAttachmentType('link'); setShowAttachMenu(false); }}
+                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                              title="External Link"
+                            >
+                              <LinkIcon className="w-4 h-4 text-purple-500" />
+                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Link</span>
+                            </button>
+                            <button 
+                              onClick={() => { setShowFileGallery(true); setShowAttachMenu(false); fetchUserFiles(); }}
+                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                              title="My Files"
+                            >
+                              <FolderOpen className="w-4 h-4 text-orange-500" />
+                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Files</span>
+                            </button>
+                            <button 
+                              onClick={() => { setPostPoll({ question: '', options: ['', ''] }); setShowAttachMenu(false); }}
+                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                              title="Poll"
+                            >
+                              <Vote className="w-4 h-4 text-green-500" />
+                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Poll</span>
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="h-3 w-[1px] bg-neutral-100 mx-1" />
+                        
+                        <button 
+                          onClick={handleAiOptimizePost}
+                          disabled={isAiLoading || !postContent}
+                          className={cn(
+                            "p-1.5 rounded-lg transition-all flex items-center gap-2 text-blue-500 hover:bg-blue-50 disabled:opacity-30"
+                          )}
+                          title="AI Optimize Post"
+                        >
+                          <Sparkles className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+                        </button>
+
+                        <button 
+                          onClick={() => handleAiGenerateInteractive('poll')}
+                          disabled={isAiLoading || !postContent}
+                          className={cn(
+                            "p-1.5 rounded-lg transition-all flex items-center gap-2 text-green-500 hover:bg-green-50 disabled:opacity-30"
+                          )}
+                          title="AI Generate Poll"
+                        >
+                          <Vote className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+                        </button>
+
+                        <button 
+                          onClick={() => handleAiGenerateInteractive('quiz')}
+                          disabled={isAiLoading || !postContent}
+                          className={cn(
+                            "p-1.5 rounded-lg transition-all flex items-center gap-2 text-yellow-500 hover:bg-yellow-50 disabled:opacity-30"
+                          )}
+                          title="AI Generate Quiz"
+                        >
+                          <Trophy className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button 
+                          disabled={(!postContent && !postQuiz && !postPoll) || isAiLoading}
+                          onClick={submitPost}
+                          className="px-4 py-1.5 bg-black text-white rounded-lg text-[9px] font-bold uppercase tracking-[0.15em] hover:bg-neutral-800 disabled:opacity-30 transition-all flex items-center gap-2"
+                        >
+                          Publish
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {attachmentType !== 'none' && (
-                  <div className="mb-4 p-3 bg-neutral-50 rounded-xl border border-neutral-100 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Plus className="w-4 h-4 text-black rotate-45 cursor-pointer" onClick={() => setAttachmentType('none')} />
-                      <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-400">Attached: {attachmentType.replace('_', ' ')}</span>
-                    </div>
-                    {attachmentType === 'cv_item' && profileData?.cv && (
-                      <select 
-                        className="text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-1 outline-none"
-                        onChange={(e) => setAttachmentId(Number(e.target.value))}
-                      >
-                        <option value="">Select CV Entry...</option>
-                        {profileData.cv.map((item: any) => (
-                          <option key={item.id} value={item.id}>{item.title} at {item.subtitle}</option>
+                <div className="mt-2">
+                  {/* Poll Builder */}
+                  {postPoll && (
+                    <div className="mb-4 p-4 bg-blue-50/30 border border-blue-100 rounded-xl animate-in zoom-in-95">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Vote className="w-4 h-4 text-blue-500" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Career Poll</span>
+                        </div>
+                        <X className="w-4 h-4 text-neutral-400 cursor-pointer" onClick={() => setPostPoll(null)} />
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Ask a question..."
+                        className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-[10px] mb-2 focus:ring-1 focus:ring-blue-500 outline-none"
+                        value={postPoll.question}
+                        onChange={(e) => setPostPoll({ ...postPoll, question: e.target.value })}
+                      />
+                      <div className="space-y-2">
+                        {postPoll.options.map((opt, i) => (
+                          <div key={i} className="flex gap-2">
+                            <input 
+                              type="text" 
+                              placeholder={`Option ${i+1}`}
+                              className="flex-1 bg-white border border-blue-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-blue-500 outline-none"
+                              value={opt}
+                              onChange={(e) => {
+                                const newOpts = [...postPoll.options];
+                                newOpts[i] = e.target.value;
+                                setPostPoll({ ...postPoll, options: newOpts });
+                              }}
+                            />
+                            {postPoll.options.length > 2 && (
+                              <button onClick={() => setPostPoll({ ...postPoll, options: postPoll.options.filter((_, idx) => idx !== i) })} className="text-neutral-300 hover:text-red-500">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         ))}
-                      </select>
-                    )}
-                  </div>
-                )}
+                        {postPoll.options.length < 5 && (
+                          <button 
+                            onClick={() => setPostPoll({ ...postPoll, options: [...postPoll.options, ''] })}
+                            className="text-[10px] font-bold text-blue-500 hover:underline flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Add Option
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                <div className="flex items-center justify-between pt-3 border-t border-neutral-50">
-                  <div className="flex gap-1 md:gap-2">
-                    <button 
-                      onClick={() => setAttachmentType('cv_item')}
-                      className={cn("p-2 rounded-lg transition-all", attachmentType === 'cv_item' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50")}
-                      title="Attach CV Item"
-                    >
-                      <FileText className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => setAttachmentType('link')}
-                      className={cn("p-2 rounded-lg transition-all", attachmentType === 'link' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50")}
-                      title="Attach External Link"
-                    >
-                      <LinkIcon className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => setAttachmentType('discussion')}
-                      className={cn("p-2 rounded-lg transition-all", attachmentType === 'discussion' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50")}
-                      title="Start Discussion"
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <Button 
-                    variant="primary" 
-                    disabled={!postContent}
-                    onClick={submitPost}
-                    className="rounded-xl px-6 text-xs h-9"
-                  >
-                    Post
-                  </Button>
+                  {/* Quiz Builder */}
+                  {postQuiz && (
+                    <div className="mb-4 p-4 bg-yellow-50/30 border border-yellow-100 rounded-xl animate-in zoom-in-95">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Trophy className="w-4 h-4 text-yellow-500" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-600">Career Quiz</span>
+                        </div>
+                        <X className="w-4 h-4 text-neutral-400 cursor-pointer" onClick={() => setPostQuiz(null)} />
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Enter quiz question..."
+                        className="w-full bg-white border border-yellow-100 rounded-lg px-3 py-2 text-[10px] mb-2 focus:ring-1 focus:ring-yellow-500 outline-none"
+                        value={postQuiz.question}
+                        onChange={(e) => setPostQuiz({ ...postQuiz, question: e.target.value })}
+                      />
+                      <div className="space-y-2">
+                        {postQuiz.options.map((opt, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                            <input 
+                              type="radio"
+                              checked={postQuiz.correctIndex === i}
+                              onChange={() => setPostQuiz({ ...postQuiz, correctIndex: i })}
+                              className="w-3 h-3 text-yellow-500"
+                            />
+                            <input 
+                              type="text" 
+                              placeholder={`Option ${i+1}`}
+                              className={cn("flex-1 bg-white border border-yellow-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-yellow-500 outline-none", postQuiz.correctIndex === i && "border-yellow-300 ring-1 ring-yellow-300")}
+                              value={opt}
+                              onChange={(e) => {
+                                const newOpts = [...postQuiz.options];
+                                newOpts[i] = e.target.value;
+                                setPostQuiz({ ...postQuiz, options: newOpts });
+                              }}
+                            />
+                            {postQuiz.options.length > 2 && (
+                              <button onClick={() => setPostQuiz({ ...postQuiz, options: postQuiz.options.filter((_, idx) => idx !== i) })} className="text-neutral-300 hover:text-red-500">
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {postQuiz.options.length < 5 && (
+                          <button 
+                            onClick={() => setPostQuiz({ ...postQuiz, options: [...postQuiz.options, ''] })}
+                            className="text-[10px] font-bold text-yellow-500 hover:underline flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Add Option
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {attachmentType !== 'none' && (
+                    <div className="mb-4 p-3 bg-neutral-50 rounded-xl border border-neutral-100 flex items-center justify-between animate-in slide-in-from-top-2">
+                      <div className="flex items-center gap-2">
+                        <X className="w-4 h-4 text-neutral-400 cursor-pointer hover:text-black" onClick={() => setAttachmentType('none')} />
+                        <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500">Attached: {attachmentType.replace('_', ' ')}</span>
+                      </div>
+                      {attachmentType === 'cv_item' && profileData?.cv && (
+                        <select 
+                          className="text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-1 outline-none"
+                          onChange={(e) => setAttachmentId(Number(e.target.value))}
+                        >
+                          <option value="">Select CV Entry...</option>
+                          {profileData.cv.map((item: any) => (
+                            <option key={item.id} value={item.id}>{item.title} at {item.subtitle}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {aiOptimizedPost && (
+                <div className="mt-4 p-4 bg-blue-50/50 border border-blue-100 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-3 h-3 text-blue-500" />
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">AI Content Assist</span>
+                  </div>
+                  
+                  {aiOptimizedPost.quiz && (
+                    <div className="mb-4">
+                      <p className="text-[10px] font-bold text-neutral-500 uppercase mb-2">Suggested Quiz</p>
+                      <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
+                        <p className="text-xs font-bold mb-2">{aiOptimizedPost.quiz.question}</p>
+                        <div className="space-y-1">
+                          {aiOptimizedPost.quiz.options.map((opt: string, i: number) => (
+                            <div key={i} className="text-[10px] p-2 bg-neutral-50 rounded-lg border border-neutral-100">{opt}</div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {aiOptimizedPost.poll && (
+                    <div>
+                      <p className="text-[10px] font-bold text-neutral-500 uppercase mb-2">Suggested Poll</p>
+                      <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
+                        <p className="text-xs font-bold mb-2">{aiOptimizedPost.poll.question}</p>
+                        <div className="space-y-1">
+                          {aiOptimizedPost.poll.options.map((opt: string, i: number) => (
+                            <div key={i} className="text-[10px] p-2 bg-neutral-50 rounded-lg border border-neutral-100">{opt}</div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => setAiOptimizedPost(null)}
+                    className="mt-4 text-[10px] text-blue-500 font-bold hover:underline"
+                  >
+                    Clear AI suggestions
+                  </button>
+                </div>
+              )}
 
               <div className="space-y-4">
                 {posts.map(post => (
@@ -977,6 +1473,7 @@ export default function App() {
                     onApply={applyToJob}
                     isExpanded={expandedPost === post.id}
                     onComment={(id) => setExpandedPost(expandedPost === id ? null : id)} 
+                    onRespond={handlePostResponse}
                   />
                 ))}
               </div>
@@ -988,9 +1485,20 @@ export default function App() {
                   <h2 className="text-xl font-bold tracking-tight">Applicant Portal</h2>
                   <p className="text-xs text-neutral-500">Managing talent for Job ID: {selectedJobId}</p>
                 </div>
-                <Button variant="ghost" onClick={() => setActiveMainTab('jobs')} className="text-xs">
-                  Back to Jobs
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    onClick={handleAiShortlistApplicants}
+                    disabled={isAiLoading}
+                    variant="outline" 
+                    className="text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
+                  >
+                    <Sparkles className={cn("w-3 h-3 mr-2", isAiLoading && "animate-spin")} />
+                    {t('App.ai_search')}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setActiveMainTab('jobs')} className="text-xs">
+                    Back to Jobs
+                  </Button>
+                </div>
               </header>
 
               <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-white border border-neutral-200 rounded-3xl p-4 shadow-sm">
@@ -1051,6 +1559,25 @@ export default function App() {
                           )}
                         </div>
                         <p className="text-[10px] text-neutral-500 truncate uppercase font-mono">{applicant.headline}</p>
+                        {aiApplicantsFeedback?.find(f => f.applicantId === applicant.user_id) && (
+                          <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg animate-in fade-in zoom-in-95">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-1">
+                                <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                                <span className="text-[8px] font-bold text-blue-600 uppercase">AI Analysis</span>
+                              </div>
+                              <span className={cn(
+                                "text-[10px] font-bold",
+                                (aiApplicantsFeedback.find(f => f.applicantId === applicant.user_id)?.score || 0) > 80 ? "text-green-600" : "text-blue-600"
+                              )}>
+                                {aiApplicantsFeedback.find(f => f.applicantId === applicant.user_id)?.score}%
+                              </span>
+                            </div>
+                            <p className="text-[9px] text-blue-800 line-clamp-2 italic">
+                              {aiApplicantsFeedback.find(f => f.applicantId === applicant.user_id)?.reasoning}
+                            </p>
+                          </div>
+                        )}
                       </div>
                       <div className="flex gap-2">
                          {applicant.status === 'pending' && (
@@ -1940,7 +2467,142 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showFileGallery && (
+          <FileGallery 
+            files={userFiles}
+            galleryFilter={galleryFilter}
+            setGalleryFilter={setGalleryFilter}
+            onClose={() => setShowFileGallery(false)}
+            onUpload={uploadFile}
+            onDelete={deleteFile}
+            onSelect={(file) => {
+              setAttachmentType('portfolio_item');
+              setAttachmentId(file.id);
+              setShowFileGallery(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
+const FileGallery = ({ 
+  files, 
+  onSelect, 
+  onClose, 
+  onUpload, 
+  onDelete,
+  galleryFilter,
+  setGalleryFilter
+}: { 
+  files: FileItem[]; 
+  onSelect: (file: FileItem) => void; 
+  onClose: () => void;
+  onUpload: (name: string, url: string, type: string, purpose: string) => void;
+  onDelete: (id: number) => void;
+  galleryFilter: string;
+  setGalleryFilter: (f: string) => void;
+}) => {
+  const filteredFiles = galleryFilter === 'all' ? files : files.filter(f => f.purpose === galleryFilter);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        <header className="p-6 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Professional Asset Gallery</h2>
+            <p className="text-xs text-neutral-500">Manage your verified files and career artifacts</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors border border-neutral-200">
+            <X className="w-5 h-5" />
+          </button>
+        </header>
+
+        <div className="p-6 flex flex-col gap-6 overflow-hidden">
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+            <div className="flex gap-2 p-1 bg-neutral-100 rounded-xl overflow-x-auto scrollbar-hide">
+              {['all', 'cv_item', 'portfolio_item', 'other'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setGalleryFilter(f)}
+                  className={cn(
+                    "px-4 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-widest transition-all whitespace-nowrap",
+                    galleryFilter === f ? "bg-white text-black shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+                  )}
+                >
+                  {f.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+            
+            <label className="bg-black text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:bg-neutral-800 transition-colors shrink-0">
+              <Plus className="w-3 h-3 inline mr-2" /> Upload New
+              <input 
+                type="file" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    onUpload(file.name, url, file.type, galleryFilter === 'all' ? 'other' : galleryFilter);
+                  }
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-4 min-h-[300px] pb-10 scrollbar-hide">
+            {filteredFiles.length === 0 ? (
+              <div className="col-span-full flex flex-col items-center justify-center text-neutral-400 gap-3 py-20">
+                <FolderOpen className="w-12 h-12 opacity-20" />
+                <p className="text-xs font-medium">No assets found in this category</p>
+              </div>
+            ) : (
+              filteredFiles.map((file) => (
+                <div 
+                  key={file.id}
+                  className="group relative bg-neutral-50 border border-neutral-200 rounded-2xl p-4 hover:border-black transition-all cursor-pointer"
+                  onClick={() => onSelect(file)}
+                >
+                  <div className="aspect-square bg-white rounded-xl mb-3 flex items-center justify-center border border-neutral-100 group-hover:shadow-md transition-all">
+                    {file.type?.startsWith('image/') ? (
+                      <img src={file.url} alt={file.name} className="w-full h-full object-cover rounded-xl" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <FileText className="w-8 h-8 text-neutral-200" />
+                        <span className="text-[8px] font-mono text-neutral-400 uppercase">{file.type.split('/')[1] || 'FILE'}</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-bold truncate mb-1">{file.name}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest">{file.purpose.replace('_', ' ')}</span>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <footer className="p-6 bg-neutral-50/50 border-t border-neutral-100">
+          <p className="text-[8px] text-neutral-400 font-bold uppercase tracking-[0.2em] text-center">Your files are stored securely and verified by ProSync</p>
+        </footer>
+      </motion.div>
+    </div>
+  );
+};
 

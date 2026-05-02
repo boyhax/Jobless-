@@ -53,6 +53,9 @@ export interface Post {
   type: 'standard' | 'cv_update' | 'discussion';
   attachment_type: 'cv_item' | 'portfolio_item' | 'none';
   attachment_id: number | null;
+  quiz_data?: string | null;
+  poll_data?: string | null;
+  response_stats?: string | null;
   created_at: string;
   full_name: string;
   avatar_url: string | null;
@@ -77,5 +80,15 @@ export interface PortfolioItem {
   url: string;
   thumbnail_url: string | null;
   description: string | null;
+  created_at: string;
+}
+
+export interface FileItem {
+  id: number;
+  user_id: number;
+  name: string;
+  url: string;
+  type: string;
+  purpose: string;
   created_at: string;
 }

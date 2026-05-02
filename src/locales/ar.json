@@ -1,0 +1,23 @@
+{
+  "-": "-",
+  "App.feed": "الرئيسية",
+  "App.jobs": "الوظائف",
+  "App.network_strength": "قوة الشبكة",
+  "App.search_placeholder": "ابحث عن مهارات أو خبراء...",
+  "App.trending_pulse": "الأكثر تداولاً",
+  "App.user_demo": "مستخدم تجريبي",
+  "App.user_recruiter": "ممثل شركة",
+  "App.verified_professionals": "محترفين موثقين",
+  "PostCard.apply_now": "تقدم الآن",
+  "PostCard.direct_sync": "مزامنة مباشرة مع مدير التوظيف متاحة.",
+  "PostCard.opportunity_portal": "بوابة الفرص",
+  "Profile.engagement": "التفاعل",
+  "Profile.synths_recv": "طلبات المزامنة",
+  "Profile.views": "زيارات الملف",
+  "Sync request sent!": "تم إرسال طلب المزامنة!",
+  "|": "|",
+  "App.applicants": "المتقدمين",
+  "App.ai_rank": "تصنيف الذكاء الاصطناعي",
+  "App.ai_search": "بحث بالذكاء الاصطناعي",
+  "App.optimize": "تحسين بالذكاء الاصطناعي"
+}
