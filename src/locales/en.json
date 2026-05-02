@@ -1,10 +1,17 @@
 {
   ",": ",",
   "-": "-",
+<<<<<<< HEAD
   "/": "/",
   ":": ":",
   "App.ai_rank": "App.ai_rank",
   "App.ai_search": "App.ai_search",
+=======
+  "App.feed": "Feed",
+  "App.jobs": "Jobs",
+  "App.organizations": "Organizations",
+  "App.users": "Users",
+>>>>>>> e472d20e60d64e725be1f79d8672c23486b5f075
   "App.network_strength": "NETWORK STRENGTH",
   "App.search_placeholder": "Search skills/experts...",
   "App.trending_pulse": "Trending Pulse",

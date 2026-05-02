@@ -2,6 +2,8 @@
   "-": "-",
   "App.feed": "الرئيسية",
   "App.jobs": "الوظائف",
+  "App.organizations": "المؤسسات",
+  "App.users": "المستخدمين",
   "App.network_strength": "قوة الشبكة",
   "App.search_placeholder": "ابحث عن مهارات أو خبراء...",
   "App.trending_pulse": "الأكثر تداولاً",

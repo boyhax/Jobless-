@@ -4,6 +4,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +48,12 @@ async function generateContentSafe(prompt: string, fallback: any, isJson: boolea
 
 // Initialize Database
 db.exec(`
+  CREATE TABLE IF NOT EXISTS places (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    region TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE,
@@ -55,12 +62,17 @@ db.exec(`
     headline TEXT,
     avatar_url TEXT,
     bio TEXT,
+    role TEXT DEFAULT 'jobseeker', -- 'admin', 'company', 'jobseeker'
+    subscription TEXT DEFAULT 'free', -- 'free', 'pro', 'enterprise'
+    place_id INTEGER,
+    cv_text TEXT,
     profile_views INTEGER DEFAULT 0,
     is_company_rep INTEGER DEFAULT 0,
     company_name TEXT,
     company_description TEXT,
     company_website TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(place_id) REFERENCES places(id)
   );
 
   CREATE TABLE IF NOT EXISTS cv_sections (
@@ -73,7 +85,7 @@ db.exec(`
     start_date DATE,
     end_date DATE,
     verification_url TEXT,
-    keywords TEXT,
+    keywords TEXT, -- JSON array
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
@@ -101,8 +113,9 @@ db.exec(`
     type TEXT, -- 'standard', 'cv_update', 'discussion'
     attachment_type TEXT, -- 'cv_item', 'link', 'discussion'
     attachment_id INTEGER,
-    quiz_data TEXT, -- JSON: { question: string, options: string[], correctIndex: number }
-    poll_data TEXT, -- JSON: { question: string, options: string[] }
+    quiz_data TEXT, -- JSON
+    poll_data TEXT, -- JSON
+    keywords TEXT, -- JSON array
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
@@ -154,20 +167,23 @@ db.exec(`
     user_id INTEGER,
     title TEXT,
     company_name TEXT,
-    location TEXT,
+    place_id INTEGER,
+    location TEXT, -- Legacy / Searchable
     description TEXT,
     salary_range TEXT,
     experience_level TEXT, -- 'Junior', 'Mid', 'Senior', 'Lead'
+    keywords TEXT, -- JSON array
     end_date DATE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (place_id) REFERENCES places(id)
   );
 
   CREATE TABLE IF NOT EXISTS job_applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     job_id INTEGER,
-    attachment_type TEXT, -- 'cv_item', 'portfolio_item', 'none'
+    attachment_type TEXT,
     attachment_id INTEGER,
     status TEXT, -- 'pending', 'reviewed', 'hired', 'shortlisted'
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -178,7 +194,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
-    type TEXT, -- 'comment', 'connection', 'application', 'mention'
+    type TEXT,
     title TEXT,
     content TEXT,
     link TEXT,
@@ -204,7 +220,7 @@ db.exec(`
     name TEXT,
     url TEXT,
     type TEXT,
-    purpose TEXT, -- 'cv_item', 'portfolio_item', 'other'
+    purpose TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
@@ -213,12 +229,39 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     keyword TEXT,
-    experience_level TEXT, -- 'all', 'Junior', 'Mid', 'Senior', 'Lead'
-    location TEXT,
+    experience_level TEXT,
+    place_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (place_id) REFERENCES places(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS otps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    otp TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// Seed Places (Oman Cities)
+const cities = [
+  { name: 'Muscat', region: 'Muscat' },
+  { name: 'Salalah', region: 'Dhofar' },
+  { name: 'Sohar', region: 'Al Batinah North' },
+  { name: 'Nizwa', region: 'Al Dakhiliyah' },
+  { name: 'Sur', region: 'Al Sharqiyah South' },
+  { name: 'Ibri', region: 'Al Dhahirah' },
+  { name: 'Khasab', region: 'Musandam' },
+  { name: 'Rustaq', region: 'Al Batinah South' }
+];
+
+const checkPlaces = db.prepare('SELECT COUNT(*) as count FROM places').get() as { count: number };
+if (checkPlaces.count === 0) {
+  const insertPlace = db.prepare('INSERT INTO places (name, region) VALUES (?, ?)');
+  cities.forEach(city => insertPlace.run(city.name, city.region));
+}
 
 // Migrations
 try { db.prepare('ALTER TABLE user_skills ADD COLUMN verification_url TEXT').run(); } catch(e) {}
@@ -226,59 +269,70 @@ try { db.prepare('ALTER TABLE user_skills ADD COLUMN is_verified INTEGER DEFAULT
 try { db.prepare('ALTER TABLE users ADD COLUMN company_name TEXT').run(); } catch(e) {}
 try { db.prepare('ALTER TABLE users ADD COLUMN company_description TEXT').run(); } catch(e) {}
 try { db.prepare('ALTER TABLE users ADD COLUMN company_website TEXT').run(); } catch(e) {}
+try { db.prepare("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'jobseeker'").run(); } catch(e) {}
+try { db.prepare("ALTER TABLE users ADD COLUMN subscription TEXT DEFAULT 'free'").run(); } catch(e) {}
+try { db.prepare('ALTER TABLE users ADD COLUMN place_id INTEGER').run(); } catch(e) {}
+try { db.prepare('ALTER TABLE users ADD COLUMN cv_text TEXT').run(); } catch(e) {}
+try { db.prepare('ALTER TABLE jobs ADD COLUMN place_id INTEGER').run(); } catch(e) {}
+try { db.prepare('ALTER TABLE jobs ADD COLUMN keywords TEXT').run(); } catch(e) {}
+try { db.prepare('ALTER TABLE posts ADD COLUMN keywords TEXT').run(); } catch(e) {}
+
+// Midleware for RBAC
+const isAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
+  if (!user || user.role !== 'admin') return res.status(403).json({ error: 'Forbidden: Admin access required' });
+  next();
+};
 
 // Seed Data
-const seedData = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-if (seedData.count === 0) {
+const seedDB = () => {
+  console.log('Seeding database with fresh data...');
+  db.exec('DELETE FROM users; DELETE FROM posts; DELETE FROM jobs; DELETE FROM cv_sections;');
+  
+  const salt = bcrypt.genSaltSync(10);
+  const defaultHash = bcrypt.hashSync('Password123!', salt);
+
   const users = [
-    ['demo@prosync.com', 'Demo User', 'Senior Software Engineer | System Architect', 'Passionate about building scalable systems and finding great opportunities.', 0],
-    ['alex@prosync.com', 'Alex Rivera', 'Senior Frontend Engineer | UI Architect', 'Creative soul with a passion for precise code and human-centric design.', 0],
-    ['sarah@prosync.com', 'Sarah Chen', 'Full Stack Developer | AI Researcher', 'Building scalable architectures and exploring the frontiers of ML.', 0],
-    ['recruiter@techcorp.com', 'TechCorp Inc.', 'Verified TechCorp Representative', 'Leading technology company building the future. We are hiring!', 1],
+    ['admin@prosync.com', 'System Admin', 'Platform Administration', 'Admin of ProSync Oman.', 'admin', 'enterprise', 1, defaultHash],
+    ['ahmed@muscat.om', 'Ahmed Al-Said', 'Senior Software Architect', 'Expert in cloud systems in Muscat.', 'jobseeker', 'pro', 1, defaultHash],
+    ['recruiter@omantel.om', 'Omantel HR', 'Talent Acquisition', 'Building the future of telecom in Oman.', 'company', 'enterprise', 1, defaultHash],
+    ['fatima@salalah.om', 'Fatima Al-Balushi', 'UX Designer', 'PASSIONATE about creating beautiful experiences.', 'jobseeker', 'free', 2, defaultHash],
+    ['sohar_steel@industries.om', 'Sohar Steel', 'Manufacturing Excellence', 'Leading industrial player in Sohar.', 'company', 'pro', 3, defaultHash],
+    ['salim@omaninfra.com', 'Salim Al-Harthy', 'Infrastructure Lead', 'Building Oman\'s digital bridge.', 'company', 'pro', 1, defaultHash],
   ];
 
   const userIds: Record<string, number> = {};
-
-  for (const [email, name, headline, bio, is_company_rep] of users) {
-    const res = db.prepare('INSERT INTO users (email, full_name, headline, bio, is_company_rep) VALUES (?, ?, ?, ?, ?)').run(email, name, headline, bio, is_company_rep);
-    const userId = res.lastInsertRowid as number;
-    userIds[email as string] = userId;
-    
-    // Skills
-    db.prepare('INSERT OR IGNORE INTO skills (name) VALUES (?)').run('React');
-    db.prepare('INSERT OR IGNORE INTO skills (name) VALUES (?)').run('TypeScript');
-    db.prepare('INSERT OR IGNORE INTO skills (name) VALUES (?)').run('Node.js');
-    
-    const skillRes = db.prepare('SELECT id FROM skills WHERE name = ?').get('React') as any;
-    db.prepare('INSERT INTO user_skills (user_id, skill_id, proficiency) VALUES (?, ?, ?)').run(userId, skillRes.id, 5);
-
-    if (is_company_rep === 0) {
-      // CV
-      db.prepare(`
-        INSERT INTO cv_sections (user_id, type, title, subtitle, description, start_date, keywords)
-        VALUES (?, 'experience', 'Lead Engineer', 'TechCorp Systems', 'Spearheaded the redesign of the core dashboard reaching 2M users.', '2022-01-01', 'react, leadership, architecture')
-      `).run(userId);
-    }
-
-    // Initial Posts
-    db.prepare(`
-      INSERT INTO posts (user_id, content, type)
-      VALUES (?, 'Just joined ProSync! Looking forward to sharing my verified professional journey here. #hiring #engineering', 'standard')
-    `).run(userId);
+  for (const [email, name, headline, bio, role, sub, placeId, pass] of users) {
+    const res = db.prepare('INSERT INTO users (email, full_name, headline, bio, role, subscription, place_id, is_company_rep, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(email, name, headline, bio, role, sub, placeId, role === 'company' ? 1 : 0, pass);
+    userIds[email as string] = res.lastInsertRowid as number;
   }
 
-  const techCorpId = userIds['recruiter@techcorp.com'];
-  db.prepare(`
-    INSERT INTO jobs (user_id, title, company_name, location, description, salary_range, experience_level)
-    VALUES (?, 'Senior Full Stack Engineer', 'TechCorp Inc.', 'Remote / San Francisco', 'Looking for an experienced builder to help scale our core product. Must have strong TypeScript and system architecture skills.', '$150k - $200k', 'Senior')
-  `).run(techCorpId);
+  // Seed Jobs with keywords and places
+  const jobSeed = [
+    [userIds['recruiter@omantel.om'], 'Cloud Infrastructure Engineer', 'Omantel HR', 1, 'Scale our nationwide network.', '$2k - $4k', 'Senior', JSON.stringify(['cloud', 'networking', 'telecom'])],
+    [userIds['sohar_steel@industries.om'], 'Mechanical Supervisor', 'Sohar Steel', 3, 'Manage production floor safety and efficiency.', '$1.5k - $2.5k', 'Mid', JSON.stringify(['mechanical', 'safety', 'industries'])],
+  ];
+  for (const job of jobSeed) {
+    db.prepare('INSERT INTO jobs (user_id, title, company_name, place_id, description, salary_range, experience_level, keywords) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(...job);
+  }
 
-  // Seed messages
-  const demoId = userIds['demo@prosync.com'];
-  const alexId = userIds['alex@prosync.com'];
-  
-  db.prepare('INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)').run(alexId, demoId, 'Hey Demo! Would love to chat about the recent frontend roles opening up. Let me know when you have time!');
-}
+  // Seed Posts
+  const postSeed = [
+    [userIds['ahmed@muscat.om'], 'Excited to see the tech growth in Muscat lately! #OmanTech', 'standard', JSON.stringify(['tech', 'muscat'])],
+    [userIds['fatima@salalah.om'], 'How important is cultural context in UI design for the Gulf region?', 'discussion', JSON.stringify(['design', 'culture'])],
+  ];
+  for (const post of postSeed) {
+    db.prepare('INSERT INTO posts (user_id, content, type, keywords) VALUES (?, ?, ?, ?)')
+      .run(...post);
+  }
+};
+
+const seedDataCheck = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+if (seedDataCheck.count === 0) seedDB();
 
 async function startServer() {
   const app = express();
@@ -296,27 +350,140 @@ async function startServer() {
 
   const apiRouter = express.Router();
 
-  // Debug endpoint
-  apiRouter.get('/health', (req, res) => {
-    res.json({ 
-      status: 'ok', 
-      time: new Date().toISOString(),
-      ai_key_found: !!process.env.GEMINI_API_KEY,
-      ai_key_length: process.env.GEMINI_API_KEY?.length || 0
-    });
+  // Admin Endpoints
+  apiRouter.get('/admin/analytics', isAdmin, (req, res) => {
+    const stats = {
+      users: db.prepare('SELECT COUNT(*) as count FROM users').get(),
+      posts: db.prepare('SELECT COUNT(*) as count FROM posts').get(),
+      jobs: db.prepare('SELECT COUNT(*) as count FROM jobs').get(),
+      subs: db.prepare('SELECT subscription, COUNT(*) as count FROM users GROUP BY subscription').all(),
+      roles: db.prepare('SELECT role, COUNT(*) as count FROM users GROUP BY role').all()
+    };
+    res.json(stats);
   });
 
-  // Mock Auth
-  apiRouter.post('/auth/login', (req, res) => {
+  apiRouter.get('/admin/users', isAdmin, (req, res) => {
+    const users = db.prepare('SELECT id, full_name, email, role, subscription FROM users').all();
+    res.json(users);
+  });
+
+  apiRouter.post('/admin/seed', isAdmin, (req, res) => {
+    seedDB();
+    res.json({ success: true, message: 'Database re-seeded successfully' });
+  });
+
+  apiRouter.post('/admin/update-subscription', isAdmin, (req, res) => {
+    const { userId, subscription } = req.body;
+    db.prepare('UPDATE users SET subscription = ? WHERE id = ?').run(subscription, userId);
+    res.json({ success: true });
+  });
+
+  // Places
+  apiRouter.get('/places', (req, res) => {
+    res.json(db.prepare('SELECT * FROM places').all());
+  });
+
+  // Real Auth Endpoints
+  apiRouter.post('/auth/check-email', (req, res) => {
     const { email } = req.body;
-    let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    res.json({ exists: !!user });
+  });
+
+  apiRouter.post('/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+    
     if (!user) {
-      const name = email.split('@')[0];
-      const result = db.prepare('INSERT INTO users (email, full_name, headline) VALUES (?, ?, ?)')
-        .run(email, name, 'Professional Individual');
-      user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+      return res.status(401).json({ error: 'User not found' });
     }
-    res.json(user);
+
+    if (!user.password) {
+      return res.status(401).json({ error: 'This user has no password set. Please use Forgot Password.' });
+    }
+
+    const isValid = bcrypt.compareSync(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Don't send password hash back
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  });
+
+  apiRouter.post('/auth/register', (req, res) => {
+    const { email, password, full_name } = req.body;
+    
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existing) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(password, salt);
+
+    try {
+      const result = db.prepare('INSERT INTO users (email, full_name, password, headline) VALUES (?, ?, ?, ?)')
+        .run(email, full_name, hash, 'Professional Individual');
+      
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid) as any;
+      const { password: _, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (err) {
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  apiRouter.post('/auth/forgot-password', (req, res) => {
+    const { email } = req.body;
+    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (!user) {
+      return res.status(404).json({ error: 'No user found with this email' });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 mins
+
+    db.prepare('DELETE FROM otps WHERE email = ?').run(email);
+    db.prepare('INSERT INTO otps (email, otp, expires_at) VALUES (?, ?, ?)').run(email, otp, expiresAt);
+
+    console.log(`[AUTH] OTP for ${email}: ${otp}`);
+    
+    // In demo environment, we return it to help the user. In production, we'd email it.
+    res.json({ success: true, message: 'OTP sent to your email', debug_otp: otp });
+  });
+
+  apiRouter.post('/auth/verify-otp', (req, res) => {
+    const { email, otp } = req.body;
+    const record = db.prepare('SELECT * FROM otps WHERE email = ? AND otp = ?').get(email, otp) as any;
+
+    if (!record) {
+      return res.status(401).json({ error: 'Invalid OTP' });
+    }
+
+    if (new Date(record.expires_at) < new Date()) {
+      return res.status(401).json({ error: 'OTP expired' });
+    }
+
+    res.json({ success: true });
+  });
+
+  apiRouter.post('/auth/reset-password', (req, res) => {
+    const { email, otp, newPassword } = req.body;
+    
+    const record = db.prepare('SELECT * FROM otps WHERE email = ? AND otp = ?').get(email, otp) as any;
+    if (!record || new Date(record.expires_at) < new Date()) {
+      return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(newPassword, salt);
+
+    db.prepare('UPDATE users SET password = ? WHERE email = ?').run(hash, email);
+    db.prepare('DELETE FROM otps WHERE email = ?').run(email);
+
+    res.json({ success: true, message: 'Password reset successfully' });
   });
 
   // Notifications
@@ -354,22 +521,27 @@ async function startServer() {
 
   // Jobs
   apiRouter.get('/jobs', (req, res) => {
-    const { q, experience, minSalary } = req.query;
-    let query = 'SELECT * FROM jobs WHERE 1=1';
+    const { q, experience, minSalary, placeId } = req.query;
+    let query = 'SELECT j.*, p.name as place_name FROM jobs j LEFT JOIN places p ON j.place_id = p.id WHERE 1=1';
     const params: any[] = [];
     if (q) {
-      query += ' AND (title LIKE ? OR description LIKE ? OR company_name LIKE ?)';
-      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      query += ' AND (j.title LIKE ? OR j.description LIKE ? OR j.company_name LIKE ? OR j.keywords LIKE ?)';
+      const term = `%${q}%`;
+      params.push(term, term, term, term);
+    }
+    if (placeId && placeId !== 'all') {
+      query += ' AND j.place_id = ?';
+      params.push(placeId);
     }
     if (experience && experience !== 'all') {
-      query += ' AND experience_level = ?';
+      query += ' AND j.experience_level = ?';
       params.push(experience);
     }
     if (minSalary) {
-      query += " AND CAST(REPLACE(REPLACE(salary_range, 'k', ''), '$', '') AS INTEGER) >= ?";
+      query += " AND CAST(REPLACE(REPLACE(j.salary_range, 'k', ''), '$', '') AS INTEGER) >= ?";
       params.push(parseInt(minSalary as string));
     }
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY j.created_at DESC';
     const jobs = db.prepare(query).all(...params);
     res.json(jobs);
   });
@@ -404,15 +576,15 @@ async function startServer() {
     const type = req.query.type;
     const results: any = { posts: [], jobs: [], users: [] };
     if (!type || type === 'posts' || type === 'all') {
-      results.posts = db.prepare('SELECT p.*, u.full_name, u.avatar_url, u.headline FROM posts p JOIN users u ON p.user_id = u.id WHERE p.content LIKE ? ORDER BY p.created_at DESC LIMIT 10').all(term);
+      results.posts = db.prepare('SELECT p.*, u.full_name, u.avatar_url, u.headline FROM posts p JOIN users u ON p.user_id = u.id WHERE (p.content LIKE ? OR p.keywords LIKE ?) ORDER BY p.created_at DESC LIMIT 10').all(term, term);
     }
     if (!type || type === 'jobs' || type === 'all') {
-      results.jobs = db.prepare('SELECT * FROM jobs WHERE title LIKE ? OR company_name LIKE ? OR description LIKE ? ORDER BY created_at DESC LIMIT 10').all(term, term, term);
+      results.jobs = db.prepare('SELECT j.*, p.name as place_name FROM jobs j LEFT JOIN places p ON j.place_id = p.id WHERE (j.title LIKE ? OR j.company_name LIKE ? OR j.description LIKE ? OR j.keywords LIKE ? OR p.name LIKE ?) ORDER BY j.created_at DESC LIMIT 10').all(term, term, term, term, term);
     }
     if (!type || type === 'users' || type === 'all' || type === 'companies') {
-       let userQuery = `SELECT id, full_name, headline, avatar_url, is_company_rep FROM users WHERE (full_name LIKE ? OR headline LIKE ?)`;
-       const userParams = [term, term];
-       if (type === 'companies') userQuery += ` AND is_company_rep = 1`;
+       let userQuery = `SELECT u.id, u.full_name, u.headline, u.avatar_url, u.is_company_rep, u.role, p.name as place_name FROM users u LEFT JOIN places p ON u.place_id = p.id WHERE (u.full_name LIKE ? OR u.headline LIKE ? OR u.cv_text LIKE ?)`;
+       const userParams = [term, term, term];
+       if (type === 'companies') userQuery += ` AND u.role = 'company'`;
        results.users = db.prepare(userQuery + ` LIMIT 10`).all(...userParams);
     }
     res.json(results);
@@ -654,6 +826,13 @@ async function startServer() {
     
     const result = await generateContentSafe(prompt, fallback);
     res.json(result);
+  });
+
+  apiRouter.post('/user/preference/place', (req, res) => {
+    const { user_id, place_id } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
+    db.prepare('UPDATE users SET place_id = ? WHERE id = ?').run(place_id === "all" ? null : place_id, user_id);
+    res.json({ success: true });
   });
 
   // Mount API Router
