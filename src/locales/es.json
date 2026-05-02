@@ -1,7 +1,10 @@
 {
+  ",": ",",
   "-": "-",
-  "App.feed": "Muro",
-  "App.jobs": "Empleos",
+  "/": "/",
+  ":": ":",
+  "App.ai_rank": "App.ai_rank",
+  "App.ai_search": "App.ai_search",
   "App.network_strength": "FORTALEZA DE LA RED",
   "App.search_placeholder": "Buscar habilidades/expertos...",
   "App.trending_pulse": "Pulso de Tendencia",

@@ -1,7 +1,10 @@
 {
+  ",": ",",
   "-": "-",
-  "App.feed": "Feed",
-  "App.jobs": "Jobs",
+  "/": "/",
+  ":": ":",
+  "App.ai_rank": "App.ai_rank",
+  "App.ai_search": "App.ai_search",
   "App.network_strength": "NETWORK STRENGTH",
   "App.search_placeholder": "Search skills/experts...",
   "App.trending_pulse": "Trending Pulse",
