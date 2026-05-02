@@ -2,6 +2,8 @@
   "-": "-",
   "App.feed": "Feed",
   "App.jobs": "Jobs",
+  "App.organizations": "Organizations",
+  "App.users": "Users",
   "App.network_strength": "NETWORK STRENGTH",
   "App.search_placeholder": "Search skills/experts...",
   "App.trending_pulse": "Trending Pulse",

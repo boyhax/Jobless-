@@ -9,6 +9,10 @@ export interface User {
   company_name?: string | null;
   company_description?: string | null;
   company_website?: string | null;
+  role: 'admin' | 'company' | 'jobseeker';
+  subscription: 'free' | 'pro' | 'enterprise';
+  place_id?: number | null;
+  cv_text?: string | null;
   created_at: string;
 }
 

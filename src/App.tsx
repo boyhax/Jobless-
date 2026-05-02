@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { 
   Briefcase, 
   GraduationCap, 
@@ -35,8 +36,20 @@ import {
   Trophy,
   Paperclip,
   Trash2,
-  FolderOpen
+  FolderOpen,
+  ShieldCheck,
+  ShieldAlert,
+  Settings,
+  Mail,
+  Lock,
+  Newspaper,
+  Zap
 } from 'lucide-react';
+import { AdminPanel } from './components/AdminPanel';
+import { ProfilePanel } from './components/ProfilePanel';
+import { Button } from './components/ui/Button';
+import { Card } from './components/ui/Card';
+import { Avatar } from './components/ui/Avatar';
 import { cn, fetchAPI } from './lib/utils';
 import { User, Post, CVSection, Skill, PortfolioItem, Comment, FileItem } from './types';
 import { geminiService } from './services/geminiService';
@@ -44,56 +57,13 @@ import { formatDistanceToNow } from 'date-fns';
 import Markdown from 'react-markdown';
 import { useTranslation } from 'react-i18next';
 
-// --- Components ---
-
-const Button = ({ 
-  children, 
-  className, 
-  variant = 'primary', 
-  ...props 
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'outline' | 'ghost' }) => {
-  const variants = {
-    primary: 'bg-black text-white hover:bg-neutral-800',
-    secondary: 'bg-neutral-100 text-black hover:bg-neutral-200',
-    outline: 'border border-neutral-300 hover:bg-neutral-50',
-    ghost: 'hover:bg-neutral-100 text-neutral-600',
-  };
-  return (
-    <button 
-      className={cn(
-        'px-4 py-2 rounded-lg font-medium transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none',
-        variants[variant],
-        className
-      )} 
-      {...props}
-    >
-      {children}
-    </button>
-  );
-};
-
-const Card = ({ children, className }: { children: React.ReactNode; className?: string }) => (
-  <div className={cn('bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm', className)}>
-    {children}
-  </div>
-);
-
-const Avatar = ({ src, name, size = 'md', className }: { src?: string | null; name: string; size?: 'sm' | 'md' | 'lg'; className?: string }) => {
-  const sizes = { sm: 'w-8 h-8 text-xs', md: 'w-10 h-10 text-sm', lg: 'w-20 h-20 text-xl' };
-  return (
-    <div className={cn('rounded-full bg-neutral-200 flex items-center justify-center font-medium text-neutral-600 overflow-hidden shrink-0 border border-neutral-100', sizes[size], className)}>
-      {src ? <img src={src} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : name.charAt(0)}
-    </div>
-  );
-};
-
 // --- Views ---
 
 const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond }: { 
   post: Post; 
   onComment: (postId: number) => void; 
   isExpanded?: boolean; 
-  currentUser: User; 
+  currentUser: User | null; 
   onApply: (postId: number) => void;
   onRespond: (postId: number, type: 'quiz' | 'poll', index: number) => void;
 }) => {
@@ -112,7 +82,7 @@ const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond
   }, [isExpanded]);
 
   const submitComment = async () => {
-    if (!newComment) return;
+    if (!newComment || !currentUser) return;
     await fetchAPI('/api/comments', {
       method: 'POST',
       body: JSON.stringify({ user_id: currentUser.id, post_id: post.id, content: newComment })
@@ -226,7 +196,7 @@ const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond
           </div>
         )}
 
-        {isHiring && post.user_id !== currentUser.id && (
+        {isHiring && currentUser && post.user_id !== currentUser.id && (
           <div className="mb-4 p-4 bg-black rounded-xl text-white flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-widest mb-1 italic">{t('PostCard.opportunity_portal')}</p>
@@ -283,7 +253,19 @@ const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond
 
 export default function App() {
   const { t, i18n } = useTranslation();
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('currentUser');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [posts, setPosts] = useState<Post[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -326,6 +308,15 @@ export default function App() {
   // Mobile drawer states
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
+  const [leftSidebarView, setLeftSidebarView] = useState<'discovery' | 'profile'>('discovery');
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [verifyingSkillName, setVerifyingSkillName] = useState<string | null>(null);
   const [verificationUrlInput, setVerificationUrlInput] = useState('');
 
@@ -340,24 +331,194 @@ export default function App() {
   const [showFileGallery, setShowFileGallery] = useState(false);
   const [userFiles, setUserFiles] = useState<FileItem[]>([]);
   const [galleryFilter, setGalleryFilter] = useState<string>('all');
+  const [places, setPlaces] = useState<any[]>([]);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<number | 'all'>('all');
   const [postQuiz, setPostQuiz] = useState<{ question: string, options: string[], correctIndex: number } | null>(null);
   const [postPoll, setPostPoll] = useState<{ question: string, options: string[] } | null>(null);
 
-  const login = async (email: string) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [authStep, setAuthStep] = useState<'email' | 'password' | 'register' | 'forgot' | 'verify' | 'new_pass'>('email');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [debugOtp, setDebugOtp] = useState<string | null>(null);
+
+  const handleCheckEmail = async () => {
+    if (!email) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetchAPI('/api/auth/check-email', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
+      if (res.exists) {
+        setAuthStep('password');
+      } else {
+        setAuthStep('register');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Verification failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const user = await fetchAPI('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      completeLogin(user);
+    } catch (err: any) {
+      setError(err.message || 'Invalid credentials');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async () => {
+    if (!fullName || !password) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const user = await fetchAPI('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, full_name: fullName })
+      });
+      completeLogin(user);
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetchAPI('/api/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
+      setDebugOtp(res.debug_otp); // For demo
+      setAuthStep('verify');
+    } catch (err: any) {
+      setError(err.message || 'Request failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await fetchAPI('/api/auth/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp })
+      });
+      setAuthStep('new_pass');
+    } catch (err: any) {
+      setError(err.message || 'Invalid OTP');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await fetchAPI('/api/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp, newPassword })
+      });
+      setAuthStep('password');
+      setPassword('');
+      alert('Password reset successfully. Please login.');
+    } catch (err: any) {
+      setError(err.message || 'Reset failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const completeLogin = (user: any) => {
+    setCurrentUser(user);
+    setSelectedUserId(user.id);
+    if (user.place_id) {
+      setSelectedPlaceId(user.place_id);
+    }
+    fetchFeed();
+    fetchConversations();
+    fetchNotifications();
+    setAuthStep('email');
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setOtp('');
+    setNewPassword('');
+    setDebugOtp(null);
+  };
+
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
+  const fetchPlaces = async () => {
+    try {
+      const data = await fetchAPI('/api/places');
+      setPlaces(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const login = async (loginEmail: string) => {
     try {
       const user = await fetchAPI('/api/auth/login', { 
         method: 'POST', 
-        body: JSON.stringify({ email }) 
+        body: JSON.stringify({ email: loginEmail }) 
       });
       setCurrentUser(user);
       setSelectedUserId(user.id);
+      if (user.place_id) {
+        setSelectedPlaceId(user.place_id);
+      }
+      fetchFeed();
+      fetchConversations();
+      fetchNotifications();
     } catch (err) {
       console.error(err);
+      alert(t('login_failed_try_seeded'));
     }
   };
 
   useEffect(() => {
-    login('demo@prosync.com');
+    if (currentUser) {
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('currentUser');
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchPlaces();
+    if (currentUser) {
+      if (!selectedUserId) setSelectedUserId(currentUser.id);
+      if (currentUser.place_id && selectedPlaceId === 'all') {
+        setSelectedPlaceId(currentUser.place_id);
+      }
+      fetchFeed();
+      fetchConversations();
+      fetchNotifications();
+    }
   }, []);
 
   useEffect(() => {
@@ -514,6 +675,7 @@ export default function App() {
       if (searchTerm) query.set('q', searchTerm);
       if (jobFilters.experience !== 'all') query.set('experience', jobFilters.experience);
       if (jobFilters.minSalary) query.set('minSalary', jobFilters.minSalary);
+      if (selectedPlaceId !== 'all') query.set('placeId', selectedPlaceId.toString());
       
       const data = await fetchAPI(`/api/jobs?${query.toString()}`);
       setJobs(data);
@@ -763,11 +925,12 @@ export default function App() {
     setIsEditingProfile(false);
   };
 
-  const addSkill = async () => {
+  const addSkill = async (skillData?: any) => {
     if (!currentUser) return;
+    const data = skillData || skillForm;
     await fetchAPI('/api/skills', {
       method: 'POST',
-      body: JSON.stringify({ ...skillForm, user_id: currentUser.id })
+      body: JSON.stringify({ ...data, user_id: currentUser.id })
     });
     fetchProfile(currentUser.id);
     setShowSkillForm(false);
@@ -783,22 +946,24 @@ export default function App() {
     fetchProfile(currentUser.id);
   };
 
-  const addPortfolioItem = async () => {
+  const addPortfolioItem = async (pData?: any) => {
     if (!currentUser) return;
+    const data = pData || portfolioForm;
     await fetchAPI('/api/portfolio', {
       method: 'POST',
-      body: JSON.stringify({ ...portfolioForm, user_id: currentUser.id })
+      body: JSON.stringify({ ...data, user_id: currentUser.id })
     });
     fetchProfile(currentUser.id);
     setShowPortfolioForm(false);
   };
 
-  const addCVItem = async () => {
+  const addCVItem = async (cData?: any) => {
     if (!currentUser) return;
+    const data = cData || cvForm;
     try {
       await fetchAPI('/api/cv', {
         method: 'POST',
-        body: JSON.stringify({ ...cvForm, user_id: currentUser.id })
+        body: JSON.stringify({ ...data, user_id: currentUser.id })
       });
       fetchProfile(currentUser.id);
       setShowCVForm(false);
@@ -845,11 +1010,11 @@ export default function App() {
     fetchFeed();
   };
 
-  if (!currentUser) return <div className="flex items-center justify-center h-screen bg-neutral-50 font-mono text-neutral-400">SYNCING_IDENTITY...</div>;
-
   return (
-    <div className={cn("h-screen bg-neutral-50 text-neutral-900 font-sans selection:bg-neutral-200 flex overflow-hidden", i18n.language === 'ar' && "rtl")} dir={i18n.language === 'ar' ? 'rtl' : 'ltr'}>
-      
+    <div className={cn("h-screen bg-neutral-50 text-neutral-900 font-sans selection:bg-neutral-200 flex overflow-hidden", i18n.language === 'ar' ? "flex-row-reverse" : "flex-row")} dir={i18n.language === 'ar' ? 'rtl' : 'ltr'}>
+      <Routes>
+        <Route path="/" element={
+          <>
       {/* LEFT COLUMN: DISCOVER / SEARCH */}
       <AnimatePresence>
         {isLeftOpen && (
@@ -864,15 +1029,20 @@ export default function App() {
       </AnimatePresence>
       <motion.aside 
         initial={false}
-        animate={{ x: isLeftOpen || window.innerWidth >= 768 ? 0 : -320 }}
+        animate={{ x: isLeftOpen || windowWidth >= 768 ? 0 : -320 }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className={cn(
           "fixed inset-y-0 left-0 w-80 bg-white border-r border-neutral-200 z-50 md:static md:translate-x-0 shadow-2xl md:shadow-none shrink-0"
         )}
       >
         <div className="h-full flex flex-col p-6">
-          <header className="mb-8 items-center justify-between flex">
-            <h2 className="text-xl font-bold tracking-tighter italic">ProSync.</h2>
+          <header className="mb-8 items-center justify-between flex shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="bg-black p-2 rounded-xl">
+                <ShieldCheck className="w-5 h-5 text-white" />
+              </div>
+              <h1 className="text-lg font-black tracking-tighter">ProSync Oman</h1>
+            </div>
             <div className="flex gap-2 items-center">
               <button 
                 onClick={() => setIsLeftOpen(false)}
@@ -880,129 +1050,82 @@ export default function App() {
               >
                 <Plus className="w-4 h-4 rotate-45" />
               </button>
-              <select 
-                className="text-[10px] bg-neutral-100 border-none rounded-lg px-2 py-1 outline-none text-neutral-500 font-mono hover:bg-neutral-200 transition-colors"
-                onChange={(e) => i18n.changeLanguage(e.target.value)}
-                value={i18n.language}
-              >
-                <option value="en">EN</option>
-                <option value="es">ES</option>
-                <option value="ar">AR</option>
-              </select>
-              <select 
-                className="text-[10px] bg-neutral-100 border-none rounded-lg px-2 py-1 outline-none text-neutral-500 font-mono"
-                onChange={(e) => login(e.target.value)}
-                value={currentUser.email}
-              >
-                <option value="demo@prosync.com">{t('App.user_demo')}</option>
-                <option value="recruiter@techcorp.com">{t('App.user_recruiter')}</option>
-              </select>
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto space-y-8 scrollbar-hide">
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em]">{t('App.trending_pulse')}</h3>
-                <Hash className="w-3 h-3 text-neutral-300" />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {['#hiring', '#engineering', '#design', '#ai', '#remote', '#career', '#leadership', '#web3', '#rust'].map(tag => (
-                  <button 
-                    key={tag}
-                    onClick={() => setSearchQuery(tag === searchQuery ? '' : tag)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border",
-                      searchQuery === tag 
-                        ? "bg-black border-black text-white shadow-lg shadow-black/10" 
-                        : "bg-white border-neutral-100 text-neutral-400 hover:border-neutral-300 hover:text-black"
-                    )}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em]">Top Nodes</h3>
-                <Users className="w-3 h-3 text-neutral-300" />
-              </div>
-              <div className="space-y-3">
-                {candidates.map(candidate => (
-                  <button 
-                    key={candidate.id} 
-                    onClick={() => { setSelectedUserId(candidate.id); setIsRightOpen(true); }}
-                    className="flex items-center gap-3 w-full p-2 hover:bg-neutral-50 rounded-xl transition-all text-left"
-                  >
-                    <Avatar src={candidate.avatar_url} name={candidate.full_name} size="sm" />
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-xs font-bold truncate">{candidate.full_name}</p>
-                      <p className="text-[10px] text-neutral-400 truncate uppercase font-mono">{candidate.headline?.split('|')[0]}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {recommendations.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em]">Recommended Syncs</h3>
-                  <UserPlus className="w-3 h-3 text-neutral-300" />
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-y-auto space-y-10 scrollbar-hide py-4 px-6 md:px-8">
+              {/* SUGGESTED TOPICS */}
+              <section className="space-y-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 flex items-center gap-2">
+                  <Hash className="w-3 h-3 text-blue-500" />
+                  {t('App.trending_pulse') || 'Trending Pulse'}
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {['#FutureOman', '#TechSynapse', '#OmanVision2040', '#CareerScale', '#IndustrialOps'].map(topic => (
+                    <button 
+                      key={topic} 
+                      onClick={() => {
+                        setSearchQuery(topic);
+                        setActiveMainTab('feed');
+                        setIsLeftOpen(false);
+                      }}
+                      className="px-3 py-1.5 rounded-full text-[10px] font-bold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 transition-colors flex items-center gap-1.5 group"
+                    >
+                      <span>{topic}</span>
+                      <TrendingUp className="w-2.5 h-2.5 text-neutral-300 group-hover:text-green-500 transition-colors" />
+                    </button>
+                  ))}
                 </div>
+              </section>
+
+              {/* SUGGESTED CONTACTS */}
+              <section className="space-y-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 flex items-center gap-2">
+                  <Users className="w-3 h-3 text-purple-500" />
+                  Suggested Connections
+                </h3>
                 <div className="space-y-3">
-                  {recommendations.map(candidate => (
-                    <div key={candidate.id} className="flex items-center justify-between p-2 rounded-xl bg-neutral-50 border border-neutral-100">
-                      <button 
-                        onClick={() => { setSelectedUserId(candidate.id); setIsRightOpen(true); }}
-                        className="flex items-center gap-3 flex-1 overflow-hidden text-left"
-                      >
-                        <Avatar src={candidate.avatar_url} name={candidate.full_name} size="sm" />
-                        <div className="flex-1 overflow-hidden pr-2">
-                          <p className="text-xs font-bold truncate">{candidate.full_name}</p>
-                          <p className="text-[10px] text-neutral-400 truncate uppercase font-mono mb-1">{candidate.headline?.split('|')[0]}</p>
-                          <p className="text-[9px] font-bold text-blue-500 uppercase flex items-center gap-1">
-                            <Code className="w-3 h-3" /> {candidate.shared_skills_count} Shared Skills
-                          </p>
-                        </div>
-                      </button>
-                      <Button variant="outline" className="px-2 py-1 h-auto text-[10px]" onClick={() => requestSync(candidate.id)}>Sync</Button>
+                  {[
+                    { name: 'Amna Al-Said', role: 'UX Director' },
+                    { name: 'Khalid Ben-Walid', role: 'Cloud Lead' },
+                    { name: 'Sara Al-Omani', role: 'AI Researcher' }
+                  ].map((contact, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2 rounded-xl hover:bg-neutral-50 transition-colors cursor-pointer group">
+                      <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center border border-neutral-200">
+                        <UserIcon className="w-4 h-4 text-neutral-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-bold text-neutral-900 truncate">{contact.name}</p>
+                        <p className="text-[9px] text-neutral-400 uppercase tracking-tight">{contact.role}</p>
+                      </div>
+                      <Plus className="w-3.5 h-3.5 text-neutral-300 group-hover:text-black transition-colors" />
                     </div>
                   ))}
                 </div>
               </section>
-            )}
-
-            <section className="bg-black text-white p-5 rounded-2xl">
-              <p className="text-[10px] text-white/50 mb-1">{t('App.network_strength')}</p>
-              <div className="items-end gap-2 hidden md:flex">
-                <span className="text-3xl font-mono leading-none">{candidates.length}</span>
-                <span className="text-xs pb-1 opacity-70">{t('App.verified_professionals')}</span>
-              </div>
-            </section>
+            </div>
           </div>
         </div>
       </motion.aside>
 
       {/* CENTER COLUMN: THE FEED */}
       <main className="flex-1 h-full overflow-y-auto bg-neutral-50 relative">
-        <div className="max-w-2xl mx-auto px-4 py-8 md:py-12">
+        <div className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 md:pb-12">
           {/* Integrated Search Console */}
-          <div className="flex items-center gap-3 mb-8">
-            <button 
-              onClick={() => setIsLeftOpen(true)} 
-              className={cn(
-                "p-2 hover:bg-neutral-200/50 rounded-full transition-all md:hidden",
-                isLeftOpen && "hidden"
-              )}
-            >
-              <Menu className="w-5 h-5 text-neutral-600" />
-            </button>
-            
-            <div className="flex-1 flex flex-col gap-2">
-              <div className="relative group">
+          <div className="flex flex-col gap-3 mb-8">
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsLeftOpen(true)} 
+                className={cn(
+                  "p-2 hover:bg-neutral-200/50 rounded-full transition-all md:hidden",
+                  isLeftOpen && "hidden"
+                )}
+              >
+                <Menu className="w-5 h-5 text-neutral-600" />
+              </button>
+              
+              <div className="flex-1 relative group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
                 <input 
                   type="text" 
@@ -1025,40 +1148,60 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Search Tabs */}
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
-                {[
-                  { id: 'all', label: 'Global' },
-                  { id: 'posts', label: 'Feed' },
-                  { id: 'jobs', label: 'Jobs' },
-                  { id: 'users', label: 'Users' }
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      setSearchType(tab.id as any);
-                      if (tab.id === 'jobs') setActiveMainTab('jobs');
-                      else if (['all', 'posts', 'users'].includes(tab.id)) setActiveMainTab('feed');
-                    }}
-                    className={cn(
-                      "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap",
-                      searchType === tab.id 
-                        ? "bg-black text-white shadow-md shadow-black/10 scale-105" 
-                        : "text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100"
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              <button 
+                onClick={() => { 
+                  if (currentUser) {
+                    setSelectedUserId(currentUser.id); 
+                    setActiveTab(null); 
+                    setIsRightOpen(true);
+                    setIsEditingProfile(false);
+                  } else {
+                    setIsRightOpen(true);
+                  }
+                }} 
+                className="shrink-0 hover:opacity-80 transition-opacity"
+              >
+                {currentUser ? (
+                  <div className="relative p-0.5 border-2 border-transparent hover:border-black rounded-full transition-all">
+                    <Avatar src={currentUser.avatar_url} name={currentUser.full_name} size="sm" />
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white rounded-full" title="Online" />
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center border border-neutral-200">
+                    <UserIcon className="w-4 h-4 text-neutral-400" />
+                  </div>
+                )}
+              </button>
             </div>
-
-            <button 
-              onClick={() => { setSelectedUserId(currentUser.id); setIsRightOpen(true); }} 
-              className="shrink-0 hover:opacity-80 transition-opacity md:hidden"
-            >
-              <Avatar src={currentUser.avatar_url} name={currentUser.full_name} size="sm" />
-            </button>
+            
+            {/* Search Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
+              {[
+                { id: 'all', label: t('all') },
+                { id: 'posts', label: t('posts') },
+                { id: 'jobs', label: t('jobs') },
+                { id: 'users', label: t('users') },
+                ...(currentUser?.role === 'admin' ? [{ id: 'admin', label: t('admin') }] : [])
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setSearchType(tab.id as any);
+                    if (tab.id === 'jobs') setActiveMainTab('jobs');
+                    else if (tab.id === 'admin') navigate('/admin');
+                    else if (['all', 'posts', 'users'].includes(tab.id)) setActiveMainTab('feed');
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap",
+                    searchType === tab.id 
+                      ? "bg-black text-white shadow-md shadow-black/10 scale-105" 
+                      : "text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {activeMainTab === 'feed' ? (
@@ -1068,7 +1211,7 @@ export default function App() {
                 <div className="space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
                   {searchResults.jobs?.length > 0 && (
                     <section>
-                      <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">Jobs</h3>
+                      <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">{t('App.jobs') || 'Jobs'}</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {searchResults.jobs.map((j: any) => (
                           <Card key={j.id} className="p-4 bg-white/50 backdrop-blur-sm border-dashed border-2">
@@ -1086,7 +1229,7 @@ export default function App() {
                   
                   {searchResults.users?.some((u: any) => u.is_company_rep) && (
                     <section>
-                      <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">Organizations</h3>
+                      <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">{t('App.organizations') || 'Organizations'}</h3>
                       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
                         {searchResults.users.filter((u: any) => u.is_company_rep).map((u: any) => (
                           <button 
@@ -1110,7 +1253,7 @@ export default function App() {
 
                   {searchResults.users?.some((u: any) => !u.is_company_rep) && (
                     <section>
-                      <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">Users</h3>
+                      <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">{t('App.users') || 'Users'}</h3>
                       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
                         {searchResults.users.filter((u: any) => !u.is_company_rep).map((u: any) => (
                           <button 
@@ -1130,297 +1273,297 @@ export default function App() {
               )}
 
               {/* Box to Post */}
-              <div className={cn(
-                "bg-white rounded-2xl shadow-sm transition-all duration-300 relative px-4 pt-4 pb-2"
-              )}>
-                <div className="flex gap-3">
-                  <Avatar src={currentUser.avatar_url} name={currentUser.full_name} size="sm" />
-                  <div className="flex-1 flex flex-col relative min-h-[44px]">
-                    <textarea 
-                      placeholder="What's moving in your career? Use #tags or / to add quiz/poll..." 
-                      value={postContent}
-                      onFocus={() => setIsPostFocused(true)}
-                      onBlur={() => {
-                        // Delay blur to allow clicking menu items
-                        setTimeout(() => setIsPostFocused(false), 200);
-                      }}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setPostContent(val);
-                        if (val.endsWith('/')) {
-                          setShowSlashMenu(true);
-                        } else if (showSlashMenu && !val.includes('/')) {
-                          setShowSlashMenu(false);
-                        }
-                      }}
-                      className={cn(
-                        "w-full border-none focus:ring-0 text-xs py-2 resize-y transition-all duration-300 bg-transparent",
-                        isPostFocused ? "min-h-[120px]" : "min-h-[44px]"
-                      )}
-                    />
-
-                    {showSlashMenu && (
-                      <div className="absolute left-0 bottom-full mb-2 bg-white border border-neutral-200 rounded-xl shadow-xl p-1 z-50 min-w-[140px] animate-in fade-in slide-in-from-bottom-2">
-                        <p className="px-3 py-1.5 text-[7px] font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-50">Career Interactive</p>
-                        <button 
-                          onClick={() => {
-                            setPostPoll({ question: '', options: ['', ''] });
-                            setPostContent(postContent.replace(/\/$/, ''));
+              {currentUser && (
+                <div className="bg-white rounded-2xl shadow-sm transition-all duration-300 relative px-4 pt-4 pb-2">
+                  <div className="flex gap-3">
+                    <Avatar src={currentUser.avatar_url} name={currentUser.full_name} size="sm" />
+                    <div className="flex-1 flex flex-col relative min-h-[44px]">
+                      <textarea 
+                        placeholder="What's moving in your career? Use #tags or / to add quiz/poll..." 
+                        value={postContent}
+                        onFocus={() => setIsPostFocused(true)}
+                        onBlur={() => {
+                          // Delay blur to allow clicking menu items
+                          setTimeout(() => setIsPostFocused(false), 200);
+                        }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPostContent(val);
+                          if (val.endsWith('/')) {
+                            setShowSlashMenu(true);
+                          } else if (showSlashMenu && !val.includes('/')) {
                             setShowSlashMenu(false);
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
-                        >
-                          <Vote className="w-3 h-3 text-blue-500" />
-                          Create Poll
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setPostQuiz({ question: '', options: ['', ''], correctIndex: 0 });
-                            setPostContent(postContent.replace(/\/$/, ''));
-                            setShowSlashMenu(false);
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
-                        >
-                          <Trophy className="w-3 h-3 text-yellow-500" />
-                          Create Quiz
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Integrated Action Buttons */}
-                    <div className={cn(
-                      "flex items-center justify-between mt-2 pt-2 transition-all border-t border-neutral-50",
-                      isPostFocused ? "opacity-100" : "opacity-60 scale-95 origin-left"
-                    )}>
-                      <div className="flex items-center gap-1 relative">
-                        <button 
-                          onClick={() => setShowAttachMenu(!showAttachMenu)}
-                          className={cn(
-                            "p-1.5 rounded-lg transition-all flex items-center gap-2 shrink-0",
-                            showAttachMenu ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-100"
-                          )}
-                          title="Attach Item"
-                        >
-                          <Plus className={cn("w-3.5 h-3.5 transition-transform", showAttachMenu && "rotate-45")} />
-                          <span className="text-[9px] font-bold hidden md:inline uppercase tracking-widest">Attach</span>
-                        </button>
-
-                        {showAttachMenu && (
-                          <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-300">
-                            <button 
-                              onClick={() => { setAttachmentType('cv_item'); setShowAttachMenu(false); }}
-                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
-                              title="CV Entry"
-                            >
-                              <FileText className="w-4 h-4 text-blue-500" />
-                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">CV</span>
-                            </button>
-                            <button 
-                              onClick={() => { setAttachmentType('link'); setShowAttachMenu(false); }}
-                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
-                              title="External Link"
-                            >
-                              <LinkIcon className="w-4 h-4 text-purple-500" />
-                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Link</span>
-                            </button>
-                            <button 
-                              onClick={() => { setShowFileGallery(true); setShowAttachMenu(false); fetchUserFiles(); }}
-                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
-                              title="My Files"
-                            >
-                              <FolderOpen className="w-4 h-4 text-orange-500" />
-                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Files</span>
-                            </button>
-                            <button 
-                              onClick={() => { setPostPoll({ question: '', options: ['', ''] }); setShowAttachMenu(false); }}
-                              className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
-                              title="Poll"
-                            >
-                              <Vote className="w-4 h-4 text-green-500" />
-                              <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Poll</span>
-                            </button>
-                          </div>
+                          }
+                        }}
+                        className={cn(
+                          "w-full border-none focus:ring-0 text-xs py-2 resize-y transition-all duration-300 bg-transparent",
+                          isPostFocused ? "min-h-[120px]" : "min-h-[44px]"
                         )}
+                      />
 
-                        <div className="h-3 w-[1px] bg-neutral-100 mx-1" />
-                        
-                        <button 
-                          onClick={handleAiOptimizePost}
-                          disabled={isAiLoading || !postContent}
-                          className={cn(
-                            "p-1.5 rounded-lg transition-all flex items-center gap-2 text-blue-500 hover:bg-blue-50 disabled:opacity-30"
+                      {showSlashMenu && (
+                        <div className="absolute left-0 bottom-full mb-2 bg-white border border-neutral-200 rounded-xl shadow-xl p-1 z-50 min-w-[140px] animate-in fade-in slide-in-from-bottom-2">
+                          <p className="px-3 py-1.5 text-[7px] font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-50">Career Interactive</p>
+                          <button 
+                            onClick={() => {
+                              setPostPoll({ question: '', options: ['', ''] });
+                              setPostContent(postContent.replace(/\/$/, ''));
+                              setShowSlashMenu(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
+                          >
+                            <Vote className="w-3 h-3 text-blue-500" />
+                            Create Poll
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setPostQuiz({ question: '', options: ['', ''], correctIndex: 0 });
+                              setPostContent(postContent.replace(/\/$/, ''));
+                              setShowSlashMenu(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
+                          >
+                            <Trophy className="w-3 h-3 text-yellow-500" />
+                            Create Quiz
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Integrated Action Buttons */}
+                      <div className={cn(
+                        "flex items-center justify-between mt-2 pt-2 transition-all border-t border-neutral-50",
+                        isPostFocused ? "opacity-100" : "opacity-60 scale-95 origin-left"
+                      )}>
+                        <div className="flex items-center gap-1 relative">
+                          <button 
+                            onClick={() => setShowAttachMenu(!showAttachMenu)}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-all flex items-center gap-2 shrink-0",
+                              showAttachMenu ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-100"
+                            )}
+                            title="Attach Item"
+                          >
+                            <Plus className={cn("w-3.5 h-3.5 transition-transform", showAttachMenu && "rotate-45")} />
+                            <span className="text-[9px] font-bold hidden md:inline uppercase tracking-widest">Attach</span>
+                          </button>
+
+                          {showAttachMenu && (
+                            <div className="flex items-center gap-1 animate-in fade-in slide-in-from-left-2 duration-300">
+                              <button 
+                                onClick={() => { setAttachmentType('cv_item'); setShowAttachMenu(false); }}
+                                className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                                title="CV Entry"
+                              >
+                                <FileText className="w-4 h-4 text-blue-500" />
+                                <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">CV</span>
+                              </button>
+                              <button 
+                                onClick={() => { setAttachmentType('link'); setShowAttachMenu(false); }}
+                                className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                                title="External Link"
+                              >
+                                <LinkIcon className="w-4 h-4 text-purple-500" />
+                                <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Link</span>
+                              </button>
+                              <button 
+                                onClick={() => { setShowFileGallery(true); setShowAttachMenu(false); fetchUserFiles(); }}
+                                className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                                title="My Files"
+                              >
+                                <FolderOpen className="w-4 h-4 text-orange-500" />
+                                <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Files</span>
+                              </button>
+                              <button 
+                                onClick={() => { setPostPoll({ question: '', options: ['', ''] }); setShowAttachMenu(false); }}
+                                className="p-1.5 hover:bg-neutral-100 rounded-lg transition-colors group flex items-center gap-1.5"
+                                title="Poll"
+                              >
+                                <Vote className="w-4 h-4 text-green-500" />
+                                <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">Poll</span>
+                              </button>
+                            </div>
                           )}
-                          title="AI Optimize Post"
-                        >
-                          <Sparkles className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
-                        </button>
 
-                        <button 
-                          onClick={() => handleAiGenerateInteractive('poll')}
-                          disabled={isAiLoading || !postContent}
-                          className={cn(
-                            "p-1.5 rounded-lg transition-all flex items-center gap-2 text-green-500 hover:bg-green-50 disabled:opacity-30"
-                          )}
-                          title="AI Generate Poll"
-                        >
-                          <Vote className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
-                        </button>
+                          <div className="h-3 w-[1px] bg-neutral-100 mx-1" />
+                          
+                          <button 
+                            onClick={handleAiOptimizePost}
+                            disabled={isAiLoading || !postContent}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-all flex items-center gap-2 text-blue-500 hover:bg-blue-50 disabled:opacity-30"
+                            )}
+                            title="AI Optimize Post"
+                          >
+                            <Sparkles className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+                          </button>
 
-                        <button 
-                          onClick={() => handleAiGenerateInteractive('quiz')}
-                          disabled={isAiLoading || !postContent}
-                          className={cn(
-                            "p-1.5 rounded-lg transition-all flex items-center gap-2 text-yellow-500 hover:bg-yellow-50 disabled:opacity-30"
-                          )}
-                          title="AI Generate Quiz"
-                        >
-                          <Trophy className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
-                        </button>
-                      </div>
+                          <button 
+                            onClick={() => handleAiGenerateInteractive('poll')}
+                            disabled={isAiLoading || !postContent}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-all flex items-center gap-2 text-green-500 hover:bg-green-50 disabled:opacity-30"
+                            )}
+                            title="AI Generate Poll"
+                          >
+                            <Vote className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+                          </button>
 
-                      <div className="flex items-center gap-2">
-                        <button 
-                          disabled={(!postContent && !postQuiz && !postPoll) || isAiLoading}
-                          onClick={submitPost}
-                          className="px-4 py-1.5 bg-black text-white rounded-lg text-[9px] font-bold uppercase tracking-[0.15em] hover:bg-neutral-800 disabled:opacity-30 transition-all flex items-center gap-2"
-                        >
-                          Publish
-                        </button>
+                          <button 
+                            onClick={() => handleAiGenerateInteractive('quiz')}
+                            disabled={isAiLoading || !postContent}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-all flex items-center gap-2 text-yellow-500 hover:bg-yellow-50 disabled:opacity-30"
+                            )}
+                            title="AI Generate Quiz"
+                          >
+                            <Trophy className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button 
+                            disabled={(!postContent && !postQuiz && !postPoll) || isAiLoading}
+                            onClick={submitPost}
+                            className="px-4 py-1.5 bg-black text-white rounded-lg text-[9px] font-bold uppercase tracking-[0.15em] hover:bg-neutral-800 disabled:opacity-30 transition-all flex items-center gap-2"
+                          >
+                            Publish
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-2">
-                  {/* Poll Builder */}
-                  {postPoll && (
-                    <div className="mb-4 p-4 bg-blue-50/30 border border-blue-100 rounded-xl animate-in zoom-in-95">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Vote className="w-4 h-4 text-blue-500" />
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Career Poll</span>
-                        </div>
-                        <X className="w-4 h-4 text-neutral-400 cursor-pointer" onClick={() => setPostPoll(null)} />
-                      </div>
-                      <input 
-                        type="text" 
-                        placeholder="Ask a question..."
-                        className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-[10px] mb-2 focus:ring-1 focus:ring-blue-500 outline-none"
-                        value={postPoll.question}
-                        onChange={(e) => setPostPoll({ ...postPoll, question: e.target.value })}
-                      />
-                      <div className="space-y-2">
-                        {postPoll.options.map((opt, i) => (
-                          <div key={i} className="flex gap-2">
-                            <input 
-                              type="text" 
-                              placeholder={`Option ${i+1}`}
-                              className="flex-1 bg-white border border-blue-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-blue-500 outline-none"
-                              value={opt}
-                              onChange={(e) => {
-                                const newOpts = [...postPoll.options];
-                                newOpts[i] = e.target.value;
-                                setPostPoll({ ...postPoll, options: newOpts });
-                              }}
-                            />
-                            {postPoll.options.length > 2 && (
-                              <button onClick={() => setPostPoll({ ...postPoll, options: postPoll.options.filter((_, idx) => idx !== i) })} className="text-neutral-300 hover:text-red-500">
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
+                  <div className="mt-2">
+                    {/* Poll Builder */}
+                    {postPoll && (
+                      <div className="mb-4 p-4 bg-blue-50/30 border border-blue-100 rounded-xl animate-in zoom-in-95">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Vote className="w-4 h-4 text-blue-500" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Career Poll</span>
                           </div>
-                        ))}
-                        {postPoll.options.length < 5 && (
-                          <button 
-                            onClick={() => setPostPoll({ ...postPoll, options: [...postPoll.options, ''] })}
-                            className="text-[10px] font-bold text-blue-500 hover:underline flex items-center gap-1"
-                          >
-                            <Plus className="w-3 h-3" /> Add Option
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Quiz Builder */}
-                  {postQuiz && (
-                    <div className="mb-4 p-4 bg-yellow-50/30 border border-yellow-100 rounded-xl animate-in zoom-in-95">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-yellow-500" />
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-600">Career Quiz</span>
+                          <X className="w-4 h-4 text-neutral-400 cursor-pointer" onClick={() => setPostPoll(null)} />
                         </div>
-                        <X className="w-4 h-4 text-neutral-400 cursor-pointer" onClick={() => setPostQuiz(null)} />
-                      </div>
-                      <input 
-                        type="text" 
-                        placeholder="Enter quiz question..."
-                        className="w-full bg-white border border-yellow-100 rounded-lg px-3 py-2 text-[10px] mb-2 focus:ring-1 focus:ring-yellow-500 outline-none"
-                        value={postQuiz.question}
-                        onChange={(e) => setPostQuiz({ ...postQuiz, question: e.target.value })}
-                      />
-                      <div className="space-y-2">
-                        {postQuiz.options.map((opt, i) => (
-                          <div key={i} className="flex gap-2 items-center">
-                            <input 
-                              type="radio"
-                              checked={postQuiz.correctIndex === i}
-                              onChange={() => setPostQuiz({ ...postQuiz, correctIndex: i })}
-                              className="w-3 h-3 text-yellow-500"
-                            />
-                            <input 
-                              type="text" 
-                              placeholder={`Option ${i+1}`}
-                              className={cn("flex-1 bg-white border border-yellow-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-yellow-500 outline-none", postQuiz.correctIndex === i && "border-yellow-300 ring-1 ring-yellow-300")}
-                              value={opt}
-                              onChange={(e) => {
-                                const newOpts = [...postQuiz.options];
-                                newOpts[i] = e.target.value;
-                                setPostQuiz({ ...postQuiz, options: newOpts });
-                              }}
-                            />
-                            {postQuiz.options.length > 2 && (
-                              <button onClick={() => setPostQuiz({ ...postQuiz, options: postQuiz.options.filter((_, idx) => idx !== i) })} className="text-neutral-300 hover:text-red-500">
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        {postQuiz.options.length < 5 && (
-                          <button 
-                            onClick={() => setPostQuiz({ ...postQuiz, options: [...postQuiz.options, ''] })}
-                            className="text-[10px] font-bold text-yellow-500 hover:underline flex items-center gap-1"
-                          >
-                            <Plus className="w-3 h-3" /> Add Option
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {attachmentType !== 'none' && (
-                    <div className="mb-4 p-3 bg-neutral-50 rounded-xl border border-neutral-100 flex items-center justify-between animate-in slide-in-from-top-2">
-                      <div className="flex items-center gap-2">
-                        <X className="w-4 h-4 text-neutral-400 cursor-pointer hover:text-black" onClick={() => setAttachmentType('none')} />
-                        <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500">Attached: {attachmentType.replace('_', ' ')}</span>
-                      </div>
-                      {attachmentType === 'cv_item' && profileData?.cv && (
-                        <select 
-                          className="text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-1 outline-none"
-                          onChange={(e) => setAttachmentId(Number(e.target.value))}
-                        >
-                          <option value="">Select CV Entry...</option>
-                          {profileData.cv.map((item: any) => (
-                            <option key={item.id} value={item.id}>{item.title} at {item.subtitle}</option>
+                        <input 
+                          type="text" 
+                          placeholder="Ask a question..."
+                          className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-[10px] mb-2 focus:ring-1 focus:ring-blue-500 outline-none"
+                          value={postPoll.question}
+                          onChange={(e) => setPostPoll({ ...postPoll, question: e.target.value })}
+                        />
+                        <div className="space-y-2">
+                          {postPoll.options.map((opt, i) => (
+                            <div key={i} className="flex gap-2">
+                              <input 
+                                type="text" 
+                                placeholder={`Option ${i+1}`}
+                                className="flex-1 bg-white border border-blue-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-blue-500 outline-none"
+                                value={opt}
+                                onChange={(e) => {
+                                  const newOpts = [...postPoll.options];
+                                  newOpts[i] = e.target.value;
+                                  setPostPoll({ ...postPoll, options: newOpts });
+                                }}
+                              />
+                              {postPoll.options.length > 2 && (
+                                <button onClick={() => setPostPoll({ ...postPoll, options: postPoll.options.filter((_, idx) => idx !== i) })} className="text-neutral-300 hover:text-red-500">
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+                          {postPoll.options.length < 5 && (
+                            <button 
+                              onClick={() => setPostPoll({ ...postPoll, options: [...postPoll.options, ''] })}
+                              className="text-[10px] font-bold text-blue-500 hover:underline flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Add Option
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-              {aiOptimizedPost && (
+                    {/* Quiz Builder */}
+                    {postQuiz && (
+                      <div className="mb-4 p-4 bg-yellow-50/30 border border-yellow-100 rounded-xl animate-in zoom-in-95">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Trophy className="w-4 h-4 text-yellow-500" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-600">Career Quiz</span>
+                          </div>
+                          <X className="w-4 h-4 text-neutral-400 cursor-pointer" onClick={() => setPostQuiz(null)} />
+                        </div>
+                        <input 
+                          type="text" 
+                          placeholder="Enter quiz question..."
+                          className="w-full bg-white border border-yellow-100 rounded-lg px-3 py-2 text-[10px] mb-2 focus:ring-1 focus:ring-yellow-500 outline-none"
+                          value={postQuiz.question}
+                          onChange={(e) => setPostQuiz({ ...postQuiz, question: e.target.value })}
+                        />
+                        <div className="space-y-2">
+                          {postQuiz.options.map((opt, i) => (
+                            <div key={i} className="flex gap-2 items-center">
+                              <input 
+                                type="radio"
+                                checked={postQuiz.correctIndex === i}
+                                onChange={() => setPostQuiz({ ...postQuiz, correctIndex: i })}
+                                className="w-3 h-3 text-yellow-500"
+                              />
+                              <input 
+                                type="text" 
+                                placeholder={`Option ${i+1}`}
+                                className={cn("flex-1 bg-white border border-yellow-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-yellow-500 outline-none", postQuiz.correctIndex === i && "border-yellow-300 ring-1 ring-yellow-300")}
+                                value={opt}
+                                onChange={(e) => {
+                                  const newOpts = [...postQuiz.options];
+                                  newOpts[i] = e.target.value;
+                                  setPostQuiz({ ...postQuiz, options: newOpts });
+                                }}
+                              />
+                              {postQuiz.options.length > 2 && (
+                                <button onClick={() => setPostQuiz({ ...postQuiz, options: postQuiz.options.filter((_, idx) => idx !== i) })} className="text-neutral-300 hover:text-red-500">
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {postQuiz.options.length < 5 && (
+                            <button 
+                              onClick={() => setPostQuiz({ ...postQuiz, options: [...postQuiz.options, ''] })}
+                              className="text-[10px] font-bold text-yellow-500 hover:underline flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Add Option
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {attachmentType !== 'none' && (
+                      <div className="mb-4 p-3 bg-neutral-50 rounded-xl border border-neutral-100 flex items-center justify-between animate-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2">
+                          <X className="w-4 h-4 text-neutral-400 cursor-pointer hover:text-black" onClick={() => setAttachmentType('none')} />
+                          <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500">Attached: {attachmentType.replace('_', ' ')}</span>
+                        </div>
+                        {attachmentType === 'cv_item' && profileData?.cv && (
+                          <select 
+                            className="text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-1 outline-none"
+                            onChange={(e) => setAttachmentId(Number(e.target.value))}
+                          >
+                            <option value="">Select CV Entry...</option>
+                            {profileData.cv.map((item: any) => (
+                              <option key={item.id} value={item.id}>{item.title} at {item.subtitle}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            {aiOptimizedPost && (
                 <div className="mt-4 p-4 bg-blue-50/50 border border-blue-100 rounded-2xl animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center gap-2 mb-3">
                     <Sparkles className="w-3 h-3 text-blue-500" />
@@ -1692,6 +1835,35 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Oman Specific Filter Bar */}
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar scroll-smooth">
+                <button
+                  onClick={() => setSelectedPlaceId('all')}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap border",
+                    selectedPlaceId === 'all' 
+                      ? "bg-black border-black text-white shadow-lg" 
+                      : "bg-white border-neutral-100 text-neutral-400 hover:border-neutral-300"
+                  )}
+                >
+                  All Oman
+                </button>
+                {places.map((place) => (
+                  <button
+                    key={place.id}
+                    onClick={() => setSelectedPlaceId(place.id)}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap border",
+                      selectedPlaceId === place.id 
+                        ? "bg-black border-black text-white shadow-lg" 
+                        : "bg-white border-neutral-100 text-neutral-400 hover:border-neutral-300"
+                    )}
+                  >
+                    {place.name}
+                  </button>
+                ))}
+              </div>
+
               {/* Job Filters */}
               <div className="bg-white border border-neutral-200 rounded-2xl p-4 shadow-sm space-y-4">
                 <div className="flex gap-2">
@@ -1863,595 +2035,494 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsRightOpen(false)}
-            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden"
           />
         )}
       </AnimatePresence>
       <motion.aside 
         initial={false}
-        animate={{ x: isRightOpen || window.innerWidth >= 1024 ? 0 : 450 }}
+        animate={{ x: isRightOpen || windowWidth >= 1024 ? 0 : 380 }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className={cn(
-          "fixed inset-y-0 right-0 w-[450px] max-w-[90%] bg-white border-l border-neutral-200 z-50 md:static md:translate-x-0 shadow-2xl md:shadow-none shrink-0"
+          "fixed inset-y-0 right-0 w-[380px] max-w-[90%] bg-white border-l border-neutral-200 z-50 lg:static lg:translate-x-0 shadow-2xl lg:shadow-none shrink-0"
         )}
       >
         <div className="h-full flex flex-col">
-          {/* TAB BAR */}
-          <div className="flex border-b border-neutral-100 p-2 gap-1 shrink-0 items-center">
-            <button 
-              onClick={() => setIsRightOpen(false)}
-              className="p-2 hover:bg-neutral-100 rounded-xl text-neutral-400 lg:hidden"
-            >
-              <Plus className="w-4 h-4 rotate-45" />
-            </button>
-            <button 
-              onClick={() => setActiveTab('profile')}
-              className={cn(
-                "flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2",
-                activeTab === 'profile' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50"
-              )}
-            >
-              <UserIcon className="w-3.5 h-3.5" />
-              Identity
-            </button>
-            <button 
-              onClick={() => setActiveTab('notifications')}
-              className={cn(
-                "flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 relative",
-                activeTab === 'notifications' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50"
-              )}
-            >
-              <Bell className="w-3.5 h-3.5" />
-              Activity
-              {notifications.some(n => !n.is_read) && (
-                <span className="absolute top-2 right-4 w-1.5 h-1.5 bg-red-500 rounded-full border border-white" />
-              )}
-            </button>
-            <button 
-              onClick={() => setActiveTab('messages')}
-              className={cn(
-                "flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 relative",
-                activeTab === 'messages' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50"
-              )}
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Messages
-              {conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0) > 0 && (
-                <span className="absolute top-2 right-4 w-1.5 h-1.5 bg-red-500 rounded-full border border-white" />
-              )}
+          <div className="p-4 border-b border-neutral-100 flex items-center justify-between bg-white shrink-0">
+            <div className="flex items-center gap-2">
+              <select 
+                className="text-[10px] bg-neutral-100 border-none rounded-lg px-2 py-1.5 outline-none text-neutral-500 font-mono hover:bg-neutral-200 transition-colors"
+                onChange={(e) => i18n.changeLanguage(e.target.value)}
+                value={i18n.language}
+              >
+                <option value="en">EN</option>
+                <option value="es">ES</option>
+                <option value="ar">AR</option>
+              </select>
+              
+              <select 
+                className="text-[10px] bg-neutral-100 border-none rounded-lg px-2 py-1.5 outline-none text-neutral-500 font-bold hover:bg-neutral-200 transition-colors"
+                value={selectedPlaceId || 'all'}
+                onChange={(e) => {
+                  const pid = e.target.value === 'all' ? null : Number(e.target.value);
+                  setSelectedPlaceId(pid);
+                  if (currentUser) {
+                    fetchAPI('/api/user/preference/place', {
+                      method: 'POST',
+                      body: JSON.stringify({ user_id: currentUser.id, place_id: pid })
+                    });
+                  }
+                }}
+              >
+                <option value="all">{t('all_locations') || 'Oman (All)'}</option>
+                {places.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            
+            <button onClick={() => setIsRightOpen(false)} className="lg:hidden p-2 hover:bg-neutral-100 rounded-lg text-neutral-300">
+              <Plus className="w-5 h-5 rotate-45" />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-6 py-10">
-            {activeTab === 'messages' ? (
-              <div className="space-y-6 h-full flex flex-col">
-                {!activeChatUser ? (
-                  <>
-                    <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-4">Direct Syncs</h3>
-                    {conversations.length === 0 ? (
-                      <div className="text-center py-20 text-neutral-300 italic text-xs font-mono">NO_SYNCS_AVAILABLE</div>
+          {!currentUser ? (
+            <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-white">
+              <div className="flex justify-end items-center mb-6">
+                 <button onClick={() => setIsRightOpen(false)} className="lg:hidden text-neutral-300">
+                    <Plus className="w-5 h-5 rotate-45" />
+                 </button>
+              </div>
+
+              <div className="flex justify-center mb-8">
+                <div className="bg-black p-5 rounded-[28px] shadow-2xl shadow-black/20">
+                  <ShieldCheck className="w-10 h-10 text-white" />
+                </div>
+              </div>
+              
+              <h1 className="text-2xl font-black text-center mb-1 tracking-tight">ProSync Oman</h1>
+              <p className="text-neutral-400 text-center mb-8 text-sm font-medium">{t('verified_network_oman')}</p>
+              
+              <div className="space-y-4 max-w-sm mx-auto w-full">
+                {authStep === 'email' && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
+                      <input 
+                        type="email" 
+                        placeholder="example@work.om"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleCheckEmail()}
+                        className="w-full pl-11 pr-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black focus:ring-4 focus:ring-black/5 transition-all font-bold text-sm"
+                      />
+                    </div>
+                    <Button 
+                      onClick={handleCheckEmail}
+                      disabled={isLoading}
+                      className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm shadow-xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'Continue'}
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </motion.div>
+                )}
+
+                {authStep === 'password' && (
+                  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                    <button onClick={() => setAuthStep('email')} className="text-xs font-bold text-neutral-400 flex items-center gap-1 hover:text-black transition-colors">
+                      <ChevronRight className="w-4 h-4 rotate-180" /> Back to Email
+                    </button>
+                    <div className="p-3 bg-neutral-50 rounded-xl flex items-center gap-3 mb-2">
+                       <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-black">
+                         {email ? email[0].toUpperCase() : '?'}
+                       </div>
+                       <div className="flex-1 min-w-0">
+                         <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">Logging in as</p>
+                         <p className="text-xs font-bold truncate">{email}</p>
+                       </div>
+                    </div>
+                    <div className="relative group">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
+                      <input 
+                        type="password" 
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                        autoFocus
+                        className="w-full pl-11 pr-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black focus:ring-4 focus:ring-black/5 transition-all font-bold text-sm"
+                      />
+                    </div>
+                    <div className="flex justify-end">
+                       <button onClick={handleForgotPassword} className="text-[10px] font-bold text-neutral-400 hover:text-black transition-colors">
+                         Forgot Password?
+                       </button>
+                    </div>
+                    <Button 
+                      onClick={handleLogin}
+                      disabled={isLoading}
+                      className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm shadow-xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'Log In'}
+                    </Button>
+                  </motion.div>
+                )}
+
+                {authStep === 'register' && (
+                  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                    <button onClick={() => setAuthStep('email')} className="text-xs font-bold text-neutral-400 flex items-center gap-1 hover:text-black transition-colors">
+                      <ChevronRight className="w-4 h-4 rotate-180" /> Back to Email
+                    </button>
+                    <p className="text-xs font-bold text-neutral-500">Create your ProSync identity</p>
+                    <div className="space-y-3">
+                      <input 
+                        type="text" 
+                        placeholder="Full Name"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
+                      />
+                      <input 
+                        type="password" 
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
+                      />
+                    </div>
+                    <Button 
+                      onClick={handleRegister}
+                      disabled={isLoading}
+                      className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm shadow-xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : 'Join the Network'}
+                    </Button>
+                  </motion.div>
+                )}
+
+                {authStep === 'verify' && (
+                  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                    <div className="text-center">
+                       <p className="text-xs font-bold text-neutral-500">OTP Verification</p>
+                       <p className="text-[10px] text-neutral-400">We've sent a 6-digit code to {email}</p>
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="0 0 0 0 0 0"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                      className="w-full px-4 py-5 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black text-center font-mono font-black text-2xl tracking-[0.5em]"
+                    />
+                    {debugOtp && (
+                      <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-[10px] text-amber-700 font-mono text-center">
+                        DEBUG OTP: {debugOtp}
+                      </div>
+                    )}
+                    <Button 
+                      onClick={handleVerifyOtp}
+                      disabled={isLoading || otp.length < 6}
+                      className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm transition-all"
+                    >
+                      {isLoading ? 'Verifying...' : 'Verify OTP'}
+                    </Button>
+                  </motion.div>
+                )}
+
+                {authStep === 'new_pass' && (
+                  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                    <p className="text-xs font-bold text-neutral-500 text-center">Set New Password</p>
+                    <input 
+                      type="password" 
+                      placeholder="New Password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
+                    />
+                    <Button 
+                      onClick={handleResetPassword}
+                      disabled={isLoading}
+                      className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm transition-all"
+                    >
+                      {isLoading ? 'Resetting...' : 'Reset Password'}
+                    </Button>
+                  </motion.div>
+                )}
+
+                {error && (
+                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[10px] text-red-500 font-bold bg-red-50 p-3 rounded-xl border border-red-100 text-center">
+                    {error}
+                  </motion.p>
+                )}
+
+                {/* DEV HELPERS */}
+                <div className="mt-8 pt-8 border-t border-neutral-100 space-y-4">
+                   <p className="text-[10px] font-black text-neutral-300 uppercase tracking-widest text-center">Protocol Seeds (Dev Mode)</p>
+                   <div className="grid grid-cols-1 gap-2">
+                     <button 
+                       onClick={() => { setEmail('admin@prosync.com'); setPassword('Password123!'); setAuthStep('password'); }}
+                       className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 hover:bg-neutral-100 transition-all text-left group"
+                     >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-neutral-400">System Admin</p>
+                            <p className="text-xs font-bold text-black">admin@prosync.com</p>
+                          </div>
+                          <Zap className="w-3 h-3 text-amber-500 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                     </button>
+                     <button 
+                       onClick={() => { setEmail('salim@omaninfra.com'); setPassword('Password123!'); setAuthStep('password'); }}
+                       className="p-4 rounded-2xl bg-blue-50/30 border border-blue-100/50 hover:bg-blue-50 transition-all text-left group"
+                     >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-[10px] font-black uppercase text-blue-400">Pro Company User</p>
+                            <p className="text-xs font-bold text-blue-900 line-clamp-1 text-ellipsis overflow-hidden">salim@omaninfra.com</p>
+                          </div>
+                          <Briefcase className="w-3 h-3 text-blue-500 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                     </button>
+                   </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* TAB BAR */}
+              <div className="flex border-b border-neutral-100 p-2 gap-1 shrink-0 items-center">
+                <button 
+                  onClick={() => setIsRightOpen(false)}
+                  className="p-2 hover:bg-neutral-100 rounded-xl text-neutral-400 lg:hidden"
+                >
+                  <Plus className="w-4 h-4 rotate-45" />
+                </button>
+                <button 
+                  onClick={() => setActiveTab('profile')}
+                  className={cn(
+                    "flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2",
+                    activeTab === 'profile' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50"
+                  )}
+                >
+                  <UserIcon className="w-3.5 h-3.5" />
+                  Identity
+                </button>
+                <button 
+                  onClick={() => setActiveTab('notifications')}
+                  className={cn(
+                    "flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 relative",
+                    activeTab === 'notifications' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50"
+                  )}
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  Activity
+                  {notifications.some(n => !n.is_read) && (
+                    <span className="absolute top-2 right-4 w-1.5 h-1.5 bg-red-500 rounded-full border border-white" />
+                  )}
+                </button>
+                <button 
+                  onClick={() => setActiveTab('messages')}
+                  className={cn(
+                    "flex-1 py-3 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 relative",
+                    activeTab === 'messages' ? "bg-black text-white" : "text-neutral-400 hover:bg-neutral-50"
+                  )}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Messages
+                  {conversations.reduce((acc, c) => acc + (c.unread_count || 0), 0) > 0 && (
+                    <span className="absolute top-2 right-4 w-1.5 h-1.5 bg-red-500 rounded-full border border-white" />
+                  )}
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-10">
+                {activeTab === 'messages' ? (
+                  <div className="space-y-6 h-full flex flex-col">
+                    {!activeChatUser ? (
+                      <>
+                        <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-4">Direct Syncs</h3>
+                        {conversations.length === 0 ? (
+                          <div className="text-center py-20 text-neutral-300 italic text-xs font-mono">NO_SYNCS_AVAILABLE</div>
+                        ) : (
+                          <div className="space-y-3">
+                            {conversations.map(conv => (
+                              <button 
+                                key={conv.id} 
+                                onClick={() => setActiveChatUser({ id: conv.id, full_name: conv.full_name, avatar_url: conv.avatar_url })}
+                                className="w-full bg-white p-3 rounded-2xl border border-neutral-100 shadow-sm flex items-center gap-3 text-left hover:border-neutral-300 transition-all"
+                              >
+                                <Avatar src={conv.avatar_url} name={conv.full_name} size="sm" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between items-center mb-1">
+                                    <p className="text-xs font-bold truncate">{conv.full_name}</p>
+                                    {conv.last_message_time && (
+                                      <span className="text-[8px] text-neutral-400">{formatDistanceToNow(new Date(conv.last_message_time))} ago</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-neutral-500 truncate">{conv.last_message || "Start a conversation"}</p>
+                                </div>
+                                {conv.unread_count > 0 && (
+                                  <div className="w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">
+                                    {conv.unread_count}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     ) : (
-                      <div className="space-y-3">
-                        {conversations.map(conv => (
-                          <button 
-                            key={conv.id} 
-                            onClick={() => setActiveChatUser({ id: conv.id, full_name: conv.full_name, avatar_url: conv.avatar_url })}
-                            className="w-full bg-white p-3 rounded-2xl border border-neutral-100 shadow-sm flex items-center gap-3 text-left hover:border-neutral-300 transition-all"
-                          >
-                            <Avatar src={conv.avatar_url} name={conv.full_name} size="sm" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex justify-between items-center mb-1">
-                                <p className="text-xs font-bold truncate">{conv.full_name}</p>
-                                {conv.last_message_time && (
-                                  <span className="text-[8px] text-neutral-400">{formatDistanceToNow(new Date(conv.last_message_time))} ago</span>
+                      <div className="flex flex-col h-full -mx-6 -mt-10 -mb-10">
+                        <div className="px-6 py-4 border-b border-neutral-100 flex items-center gap-3 bg-white shrink-0">
+                          <button onClick={() => setActiveChatUser(null)} className="text-neutral-400 hover:text-black">
+                            <ChevronRight className="w-4 h-4 rotate-180" />
+                          </button>
+                          <Avatar src={activeChatUser.avatar_url} name={activeChatUser.full_name} size="sm" />
+                          <p className="text-xs font-bold">{activeChatUser.full_name}</p>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-neutral-50/30">
+                          {chatMessages.length === 0 ? (
+                            <div className="text-center py-10 text-neutral-400 italic text-xs font-mono">No messages yet.</div>
+                          ) : (
+                            chatMessages.map(msg => (
+                              <div key={msg.id} className={cn("flex", msg.sender_id === currentUser?.id ? "justify-end" : "justify-start")}>
+                                <div className={cn("max-w-[75%] rounded-2xl p-3 text-xs", msg.sender_id === currentUser?.id ? "bg-black text-white rounded-br-sm" : "bg-white border border-neutral-200 text-neutral-800 rounded-bl-sm")}>
+                                  {msg.content}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+    
+                        <div className="p-4 bg-white border-t border-neutral-100 shrink-0 flex gap-2">
+                          <input 
+                            type="text"
+                            value={newChatMessage}
+                            onChange={(e) => setNewChatMessage(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
+                            placeholder="Type a message..."
+                            className="flex-1 bg-neutral-50 border border-neutral-200 rounded-full px-4 py-2 text-xs focus:ring-1 focus:ring-black outline-none"
+                          />
+                          <Button onClick={sendChatMessage} className="rounded-full px-4 text-xs font-bold h-9">Send</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : activeTab === 'notifications' ? (
+                  <div className="space-y-6">
+                    <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-4">Pulse Notifications</h3>
+                    {notifications.length === 0 ? (
+                      <div className="text-center py-20 text-neutral-300 italic text-xs font-mono">NO_ACTIVITY_DETECTED</div>
+                    ) : (
+                      <div className="space-y-4">
+                        {notifications.map(n => (
+                          <Card key={n.id} className={cn("p-4 transition-all", !n.is_read ? "bg-white border-black/10 shadow-sm" : "bg-neutral-50/50 opacity-70")}>
+                            <div className="flex gap-3">
+                              <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", 
+                                n.type === 'comment' ? "bg-blue-50 text-blue-500" : 
+                                n.type === 'connection' ? "bg-purple-50 text-purple-500" : 
+                                n.type.startsWith('job_') ? "bg-orange-50 text-orange-500" :
+                                "bg-green-50 text-green-500"
+                              )}>
+                                {n.type === 'comment' ? <MessageSquare className="w-4 h-4" /> : 
+                                 n.type === 'connection' ? <UserPlus className="w-4 h-4" /> : 
+                                 n.type.startsWith('job_') ? <Briefcase className="w-4 h-4" /> :
+                                 <Award className="w-4 h-4" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start mb-1">
+                                  <p className="text-xs font-bold truncate">{n.title}</p>
+                                  <span className="text-[8px] text-neutral-400 whitespace-nowrap">{formatDistanceToNow(new Date(n.created_at))} ago</span>
+                                </div>
+                                <p className="text-xs text-neutral-600 mb-3">{n.content}</p>
+                                {!n.is_read && (
+                                  <button 
+                                    onClick={() => markAsRead(n.id)}
+                                    className="text-[10px] font-bold text-black hover:opacity-70 flex items-center gap-1"
+                                  >
+                                    Mark as Read <ChevronRight className="w-3 h-3" />
+                                  </button>
                                 )}
                               </div>
-                              <p className="text-xs text-neutral-500 truncate">{conv.last_message || "Start a conversation"}</p>
                             </div>
-                            {conv.unread_count > 0 && (
-                              <div className="w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">
-                                {conv.unread_count}
-                              </div>
-                            )}
-                          </button>
+                          </Card>
                         ))}
                       </div>
                     )}
-                  </>
-                ) : (
-                  <div className="flex flex-col h-full -mx-6 -mt-10 -mb-10">
-                    <div className="px-6 py-4 border-b border-neutral-100 flex items-center gap-3 bg-white shrink-0">
-                      <button onClick={() => setActiveChatUser(null)} className="text-neutral-400 hover:text-black">
-                        <ChevronRight className="w-4 h-4 rotate-180" />
-                      </button>
-                      <Avatar src={activeChatUser.avatar_url} name={activeChatUser.full_name} size="sm" />
-                      <p className="text-xs font-bold">{activeChatUser.full_name}</p>
-                    </div>
-                    
-                    <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-neutral-50/30">
-                      {chatMessages.length === 0 ? (
-                        <div className="text-center py-10 text-neutral-400 italic text-xs font-mono">No messages yet.</div>
-                      ) : (
-                        chatMessages.map(msg => (
-                          <div key={msg.id} className={cn("flex", msg.sender_id === currentUser?.id ? "justify-end" : "justify-start")}>
-                            <div className={cn("max-w-[75%] rounded-2xl p-3 text-xs", msg.sender_id === currentUser?.id ? "bg-black text-white rounded-br-sm" : "bg-white border border-neutral-200 text-neutral-800 rounded-bl-sm")}>
-                              {msg.content}
-                            </div>
+                  </div>
+                ) : profileData && (
+                  <div className="space-y-6">
+                    {isEditingProfile ? (
+                       <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+                        <header className="flex flex-col items-center text-center mb-8">
+                           <Avatar src={profileData.avatar_url} name={profileData.full_name} size="lg" />
+                           <h2 className="text-xl font-bold mt-4">Modify Synapse Node</h2>
+                        </header>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                             <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Identity Headline</label>
+                             <input 
+                              className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-black outline-none transition-all"
+                              value={profileForm.headline}
+                              onChange={e => setProfileForm({...profileForm, headline: e.target.value})}
+                              placeholder="e.g. Senior Product Designer"
+                            />
                           </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="p-4 bg-white border-t border-neutral-100 shrink-0 flex gap-2">
-                      <input 
-                        type="text"
-                        value={newChatMessage}
-                        onChange={(e) => setNewChatMessage(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
-                        placeholder="Type a message..."
-                        className="flex-1 bg-neutral-50 border border-neutral-200 rounded-full px-4 py-2 text-xs focus:ring-1 focus:ring-black outline-none"
+                          <div className="space-y-2">
+                             <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Neural Bio</label>
+                             <textarea 
+                              className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl px-4 py-3 text-xs min-h-[120px] focus:ring-2 focus:ring-black outline-none transition-all"
+                              value={profileForm.bio}
+                              onChange={e => setProfileForm({...profileForm, bio: e.target.value})}
+                              placeholder="Describe your capabilities..."
+                            />
+                          </div>
+                          <div className="flex gap-2 pt-4">
+                            <Button className="flex-1 h-12 rounded-2xl text-[10px] uppercase font-black tracking-widest" onClick={updateProfile}>Lock Changes</Button>
+                            <Button variant="ghost" className="h-12 rounded-2xl text-[10px] uppercase font-black tracking-widest" onClick={() => setIsEditingProfile(false)}>Abort</Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <ProfilePanel 
+                        profileData={profileData}
+                        currentUser={currentUser}
+                        onEdit={() => {
+                          if (profileData) {
+                            setProfileForm({ 
+                              headline: profileData.headline || '', 
+                              bio: profileData.bio || '', 
+                              avatar_url: profileData.avatar_url || '',
+                              company_name: profileData.company_name || '',
+                              company_description: profileData.company_description || '',
+                              company_website: profileData.company_website || ''
+                            });
+                            setIsEditingProfile(true);
+                          }
+                        }}
+                        onLogout={() => {
+                          setCurrentUser(null);
+                          setSelectedUserId(null);
+                          setProfileData(null);
+                          setActiveChatUser(null);
+                          setIsRightOpen(false);
+                          localStorage.removeItem('currentUser');
+                        }}
+                        onNavigateToAdmin={() => { navigate('/admin'); setIsRightOpen(false); }}
+                        onSelectUserId={(id) => setSelectedUserId(id)}
+                        onRequestSync={(id) => requestSync(id)}
+                        onMessage={(user) => { setActiveTab('messages'); setActiveChatUser(user); }}
+                        onAddCVItem={addCVItem}
+                        onAddSkill={addSkill}
+                        onAddPortfolioItem={addPortfolioItem}
+                        onVerifySkill={verifySkill}
                       />
-                      <Button onClick={sendChatMessage} className="rounded-full px-4 text-xs font-bold h-9">Send</Button>
-                    </div>
+                    )}
                   </div>
                 )}
-              </div>
-            ) : activeTab === 'notifications' ? (
-              <div className="space-y-6">
-                <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-4">Pulse Notifications</h3>
-                {notifications.length === 0 ? (
-                  <div className="text-center py-20 text-neutral-300 italic text-xs font-mono">NO_ACTIVITY_DETECTED</div>
-                ) : (
-                  <div className="space-y-4">
-                    {notifications.map(n => (
-                      <Card key={n.id} className={cn("p-4 transition-all", !n.is_read ? "bg-white border-black/10 shadow-sm" : "bg-neutral-50/50 opacity-70")}>
-                        <div className="flex gap-3">
-                          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", 
-                            n.type === 'comment' ? "bg-blue-50 text-blue-500" : 
-                            n.type === 'connection' ? "bg-purple-50 text-purple-500" : 
-                            n.type.startsWith('job_') ? "bg-orange-50 text-orange-500" :
-                            "bg-green-50 text-green-500"
-                          )}>
-                            {n.type === 'comment' ? <MessageSquare className="w-4 h-4" /> : 
-                             n.type === 'connection' ? <UserPlus className="w-4 h-4" /> : 
-                             n.type.startsWith('job_') ? <Briefcase className="w-4 h-4" /> :
-                             <Award className="w-4 h-4" />}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start mb-1">
-                              <p className="text-xs font-bold truncate">{n.title}</p>
-                              <span className="text-[8px] text-neutral-400 whitespace-nowrap">{formatDistanceToNow(new Date(n.created_at))} ago</span>
-                            </div>
-                            <p className="text-xs text-neutral-600 mb-3">{n.content}</p>
-                            {!n.is_read && (
-                              <button 
-                                onClick={() => markAsRead(n.id)}
-                                className="text-[10px] font-bold text-black hover:opacity-70 flex items-center gap-1"
-                              >
-                                Mark as Read <ChevronRight className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : profileData && (
-              <div className="space-y-12">
-              <header className="flex flex-col items-center text-center">
-                 <button onClick={() => setIsRightOpen(false)} className="md:hidden self-end mb-4 text-neutral-300"><Plus className="w-5 h-5 rotate-45" /></button>
-                 <Avatar src={profileData.avatar_url} name={profileData.full_name} size="lg" />
-                 
-                 {isEditingProfile ? (
-                   <div className="mt-6 w-full space-y-3">
-                     <input 
-                       className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs font-bold"
-                       value={profileForm.headline}
-                       onChange={e => setProfileForm({...profileForm, headline: e.target.value})}
-                       placeholder="Headline (e.g. Senior Product Designer)"
-                     />
-                     <textarea 
-                       className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-xs min-h-[80px]"
-                       value={profileForm.bio}
-                       onChange={e => setProfileForm({...profileForm, bio: e.target.value})}
-                       placeholder="Short bio..."
-                     />
-                     <div className="flex gap-2">
-                       <Button className="flex-1 text-[10px]" onClick={updateProfile}>Save</Button>
-                       <Button variant="ghost" className="text-[10px]" onClick={() => setIsEditingProfile(false)}>Cancel</Button>
-                     </div>
-                   </div>
-                 ) : (
-                   <div className="mt-6">
-                      <div className="flex items-center justify-center gap-2 mb-1">
-                         {profileData.is_company_rep === 1 && profileData.company_name ? (
-                          <button 
-                            onClick={() => fetchProfile(profileData.id)}
-                            className="text-2xl font-bold tracking-tight hover:text-black/70 transition-colors"
-                          >
-                            {profileData.company_name}
-                          </button>
-                        ) : (
-                          <h2 className="text-2xl font-bold tracking-tight">{profileData.full_name}</h2>
-                        )}
-                         <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      </div>
-                      <p className="text-xs text-neutral-500 font-mono uppercase tracking-widest">{profileData.headline}</p>
-
-                       {profileData.is_company_rep === 1 && (
-                         <div className="mt-4 space-y-2 animate-in fade-in slide-in-from-top-2">
-                           {profileData.company_website && (
-                             <a 
-                               href={profileData.company_website} 
-                               target="_blank" 
-                               rel="noopener noreferrer"
-                               className="text-[10px] text-blue-500 hover:underline flex items-center justify-center gap-1"
-                             >
-                               <Globe className="w-3 h-3" />
-                               {profileData.company_website.replace(/^https?:\/\//, '')}
-                             </a>
-                           )}
-                           {profileData.company_description && (
-                             <p className="text-[10px] text-neutral-600 max-w-xs mx-auto italic">
-                               {profileData.company_description}
-                             </p>
-                           )}
-                         </div>
-                       )}
-                   </div>
-                 )}
-              </header>
-
-              <div className="flex justify-center gap-2">
-                 {profileData.id === currentUser.id ? (
-                   <Button 
-                    variant="outline" 
-                    className="text-[10px] uppercase font-bold tracking-wider rounded-xl"
-                    onClick={() => {
-                      setProfileForm({ 
-                        headline: profileData.headline || '', 
-                        bio: profileData.bio || '', 
-                        avatar_url: profileData.avatar_url || '',
-                        company_name: profileData.company_name || '',
-                        company_description: profileData.company_description || '',
-                        company_website: profileData.company_website || ''
-                      });
-                      setIsEditingProfile(true);
-                    }}
-                  >
-                    Edit Bio
-                  </Button>
-                 ) : (
-                   <>
-                     <Button variant="primary" className="text-[10px] uppercase font-bold tracking-wider rounded-xl" onClick={() => requestSync(profileData.id)}>Request Synergy</Button>
-                     <Button variant="outline" className="px-3" onClick={() => { setActiveTab('messages'); setActiveChatUser({ id: profileData.id, full_name: profileData.full_name, avatar_url: profileData.avatar_url }); }}>
-                       <MessageSquare className="w-4 h-4" />
-                     </Button>
-                   </>
-                 )}
-                 <Button variant="ghost" className="text-[10px] uppercase font-bold tracking-wider" onClick={() => setSelectedUserId(currentUser.id)}><UserIcon className="w-4 h-4" /></Button>
-              </div>
-
-               {profileData.id === currentUser.id && profileData.analytics && (
-                 <div className="mt-8 grid grid-cols-3 gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                    <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 text-center group hover:border-neutral-300 transition-all">
-                      <p className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest mb-1 text-neutral-400">{t('Profile.views')}</p>
-                      <p className="text-xl font-mono leading-none font-bold text-black">{profileData.analytics.profile_views}</p>
-                      <TrendingUp className="w-3 h-3 text-green-500 mx-auto mt-2" />
-                    </div>
-                    <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 text-center group hover:border-neutral-300 transition-all">
-                      <p className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest mb-1 text-neutral-400">{t('Profile.synths_recv')}</p>
-                      <p className="text-xl font-mono leading-none font-bold text-black">{profileData.analytics.connections_received}</p>
-                      <AtSign className="w-3 h-3 text-black mx-auto mt-2" />
-                    </div>
-                    <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 text-center group hover:border-neutral-300 transition-all">
-                      <p className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest mb-1 text-neutral-400">{t('Profile.engagement')}</p>
-                      <p className="text-xl font-mono leading-none font-bold text-black">{profileData.analytics.engagement}</p>
-                      <MessageSquare className="w-3 h-3 text-neutral-400 mx-auto mt-2" />
-                    </div>
-                 </div>
-               )}
-
-               <section className="mt-12">
-                 <div className="flex items-center justify-between mb-6">
-                   <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em]">{profileData.is_company_rep === 1 ? 'Company Chronicles' : 'Career Trajectory'}</h3>
-                  {profileData.id === currentUser.id && (
-                    <button 
-                      onClick={() => setShowCVForm(!showCVForm)}
-                      className={cn("p-1.5 rounded-lg transition-colors", showCVForm ? "bg-black text-white" : "bg-neutral-50 text-neutral-400 hover:text-black")}
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-
-                <AnimatePresence>
-                  {showCVForm && (
-                    <motion.div 
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden mb-8"
-                    >
-                      <div className="space-y-3 p-4 bg-neutral-50 rounded-2xl border border-neutral-200">
-                        <select 
-                          value={cvForm.type}
-                          onChange={e => setCvForm({...cvForm, type: e.target.value})}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-black outline-none"
-                        >
-                          <option value="experience">Professional Experience</option>
-                          <option value="education">Education</option>
-                          <option value="project">Key Project</option>
-                          <option value="certification">Certification</option>
-                        </select>
-                        <input 
-                          type="text" 
-                          placeholder="Role or Degree Title" 
-                          value={cvForm.title}
-                          onChange={e => setCvForm({...cvForm, title: e.target.value})}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-black outline-none"
-                        />
-                        <input 
-                          type="text" 
-                          placeholder="Company or Institution" 
-                          value={cvForm.subtitle}
-                          onChange={e => setCvForm({...cvForm, subtitle: e.target.value})}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-black outline-none"
-                        />
-                        <div className="flex gap-2">
-                           <input 
-                            type="date" 
-                            title="Start Date"
-                            value={cvForm.start_date}
-                            onChange={e => setCvForm({...cvForm, start_date: e.target.value})}
-                            className="flex-1 bg-white border border-neutral-200 rounded-xl px-3 py-2 text-[10px] focus:ring-1 focus:ring-black outline-none"
-                          />
-                          <input 
-                            type="date" 
-                            title="End Date"
-                            value={cvForm.end_date}
-                            onChange={e => setCvForm({...cvForm, end_date: e.target.value})}
-                            className="flex-1 bg-white border border-neutral-200 rounded-xl px-3 py-2 text-[10px] focus:ring-1 focus:ring-black outline-none"
-                          />
-                        </div>
-                        <textarea 
-                          placeholder="Verification or Portable Keywords (comma separated)" 
-                          value={cvForm.description}
-                          onChange={e => setCvForm({...cvForm, description: e.target.value})}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-black outline-none min-h-[80px]"
-                        />
-                        <input 
-                          type="url" 
-                          placeholder="Verification Link (URL)" 
-                          value={cvForm.verification_url}
-                          onChange={e => setCvForm({...cvForm, verification_url: e.target.value})}
-                          className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-black outline-none"
-                        />
-                        <div className="flex gap-2 pt-2">
-                          <Button 
-                            className="flex-1 text-[10px] uppercase tracking-widest h-9" 
-                            onClick={addCVItem}
-                            disabled={!cvForm.title || !cvForm.subtitle || !cvForm.start_date}
-                          >
-                            Verify & Update
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            className="px-4 text-[10px] uppercase font-bold text-neutral-400"
-                            onClick={() => setShowCVForm(false)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="space-y-6 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[1px] before:bg-neutral-100">
-                  {profileData.cv?.map((item: CVSection) => (
-                    <div key={item.id} className="pl-8 relative group">
-                      <div className="absolute left-0 top-1 w-6 h-6 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-center z-10 group-hover:border-black transition-all">
-                        {item.type === 'experience' ? <Briefcase className="w-3 h-3" /> : <GraduationCap className="w-3 h-3" />}
-                      </div>
-                      <div className="flex justify-between items-start mb-0.5">
-                        <p className="text-xs font-bold truncate pr-4">{item.title}</p>
-                        <span className="text-[9px] font-mono text-neutral-400 whitespace-nowrap">{item.start_date.split('-')[0]}</span>
-                      </div>
-                      <p className="text-[10px] text-neutral-500 mb-2">{item.subtitle}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {profileData.is_company_rep === 1 && profileData.jobs?.length > 0 && (
-                <section className="mt-12 bg-black rounded-3xl p-6 text-white overflow-hidden relative">
-                  <div className="absolute top-0 right-0 p-8 opacity-10">
-                    <Briefcase className="w-24 h-24" />
-                  </div>
-                  <div className="relative z-10">
-                    <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-6">Job Opportunities</h3>
-                    <div className="space-y-4">
-                      {profileData.jobs.map((job: any) => (
-                        <div key={job.id} className="group cursor-pointer border-b border-white/10 pb-4 last:border-0 hover:border-white/30 transition-all">
-                          <div className="flex justify-between items-start mb-1">
-                            <h4 className="text-xs font-bold group-hover:text-neutral-300">{job.title}</h4>
-                            <span className="text-[8px] font-mono text-neutral-500 bg-white/5 px-1 rounded uppercase tracking-widest">{job.experience_level}</span>
-                          </div>
-                          <div className="flex items-center gap-3 text-[8px] text-neutral-400 uppercase font-bold tracking-widest">
-                            <span className="flex items-center gap-1"><MapPin className="w-2 h-2" />{job.location}</span>
-                            <span>{job.salary_range}</span>
-                          </div>
-                          <p className="text-[10px] text-neutral-500 mt-2 line-clamp-2">{job.description}</p>
-                          <Button 
-                             onClick={() => setActiveMainTab('jobs')}
-                             variant="ghost" 
-                             className="text-[8px] p-0 h-auto mt-2 text-white hover:text-white/80"
-                          >
-                             Apply Now <ChevronRight className="w-2 h-2 ml-1" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em]">Verified Skills</h3>
-                  {profileData.id === currentUser.id && (
-                    <button onClick={() => setShowSkillForm(!showSkillForm)} className="text-neutral-400 hover:text-black"><Plus className="w-3 h-3" /></button>
-                  )}
-                </div>
-                
-                {showSkillForm && (
-                  <div className="mb-6 p-4 bg-neutral-50 rounded-2xl border border-neutral-100 space-y-3 animate-in fade-in slide-in-from-top-2">
-                    <input 
-                      className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                      placeholder="Skill Name (e.g. React)..."
-                      value={skillForm.name}
-                      onChange={e => setSkillForm({...skillForm, name: e.target.value})}
-                    />
-                    <input 
-                      className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs font-mono"
-                      placeholder="Verification URL (Credential Link)..."
-                      value={skillForm.verification_url}
-                      onChange={e => setSkillForm({...skillForm, verification_url: e.target.value})}
-                    />
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Skill Proficiency</span>
-                      <input 
-                        type="range" min="1" max="5" 
-                        value={skillForm.proficiency}
-                        onChange={e => setSkillForm({...skillForm, proficiency: parseInt(e.target.value)})}
-                        className="w-24 h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-black"
-                      />
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <Button className="flex-1 text-[10px] h-9 font-bold uppercase tracking-wider" onClick={addSkill}>Secure Node</Button>
-                      <Button variant="ghost" className="text-[10px] h-9 font-bold text-neutral-400 uppercase" onClick={() => setShowSkillForm(false)}>Discard</Button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  {profileData.skills?.map((skill: Skill) => (
-                    <div key={skill.name} className="flex flex-col gap-1">
-                      <div className={cn(
-                        "group relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-tight transition-all",
-                        skill.is_verified ? "bg-black text-white" : "bg-neutral-50 border border-neutral-100 text-neutral-700 hover:border-neutral-200"
-                      )}>
-                        <span>{skill.name}</span>
-                        <span className="opacity-40">{skill.proficiency}/5</span>
-                        {skill.is_verified ? (
-                          <CheckCircle2 className="w-3 h-3 text-white" />
-                        ) : profileData.id === currentUser.id ? (
-                          <button 
-                            onClick={() => {
-                              setVerifyingSkillName(skill.name);
-                              setVerificationUrlInput('');
-                            }}
-                            className="bg-black/10 hover:bg-black/20 p-0.5 rounded text-[8px] transition-colors"
-                          >
-                            VERIFY
-                          </button>
-                        ) : null}
-                        
-                        {skill.verification_url && (
-                          <a 
-                            href={skill.verification_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="ml-1 opacity-60 hover:opacity-100"
-                          >
-                            <ExternalLink className="w-2.5 h-2.5" />
-                          </a>
-                        )}
-                      </div>
-
-                      {verifyingSkillName === skill.name && (
-                        <div className="mt-2 p-3 bg-white border border-neutral-200 rounded-xl shadow-lg z-10 animate-in fade-in zoom-in-95">
-                          <p className="text-[8px] font-bold text-neutral-400 uppercase mb-2">Prove Expertise</p>
-                          <input 
-                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-2 py-1.5 text-[10px] mb-2 outline-none focus:ring-1 focus:ring-black"
-                            placeholder="Link to Certificate/Project"
-                            value={verificationUrlInput}
-                            onChange={(e) => setVerificationUrlInput(e.target.value)}
-                          />
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => {
-                                verifySkill(skill.name, verificationUrlInput);
-                                setVerifyingSkillName(null);
-                              }}
-                              className="flex-1 bg-black text-white rounded-lg py-1 text-[9px] font-bold"
-                            >
-                              Sync Proof
-                            </button>
-                            <button 
-                              onClick={() => setVerifyingSkillName(null)}
-                              className="px-2 py-1 text-[9px] text-neutral-400"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                 <div className="flex items-center justify-between mb-6">
-                   <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em]">Showcase</h3>
-                   {profileData.id === currentUser.id && (
-                     <button onClick={() => setShowPortfolioForm(!showPortfolioForm)} className="text-neutral-400 hover:text-black"><Plus className="w-3 h-3" /></button>
-                   )}
-                 </div>
-
-                 {showPortfolioForm && (
-                   <div className="mb-6 p-4 bg-neutral-50 rounded-2xl border border-neutral-100 space-y-3">
-                     <input 
-                       className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                       placeholder="Project Title..."
-                       value={portfolioForm.title}
-                       onChange={e => setPortfolioForm({...portfolioForm, title: e.target.value})}
-                     />
-                     <textarea 
-                       className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                       placeholder="Discovery Details..."
-                       value={portfolioForm.description}
-                       onChange={e => setPortfolioForm({...portfolioForm, description: e.target.value})}
-                     />
-                     <input 
-                       className="w-full bg-white border border-neutral-200 rounded-xl px-3 py-2 text-xs"
-                       placeholder="Project URL..."
-                       value={portfolioForm.url}
-                       onChange={e => setPortfolioForm({...portfolioForm, url: e.target.value})}
-                     />
-                     <div className="flex gap-2">
-                       <Button className="flex-1 text-[10px] h-8" onClick={addPortfolioItem}>Add Portfolio</Button>
-                       <Button variant="ghost" className="text-[10px] h-8 font-bold text-neutral-400" onClick={() => setShowPortfolioForm(false)}>Cancel</Button>
-                     </div>
-                   </div>
-                 )}
-
-                 <div className="grid grid-cols-1 gap-4">
-                      {profileData.portfolio.map((item: PortfolioItem) => (
-                        <Card key={item.id} className="p-4 border-none bg-neutral-50 hover:bg-neutral-100 transition-all cursor-pointer">
-                           <p className="text-xs font-bold mb-1">{item.title}</p>
-                           <p className="text-[10px] text-neutral-400 line-clamp-2">{item.description}</p>
-                        </Card>
-                      ))}
-                   </div>
-                </section>
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </motion.aside>
 
@@ -2485,6 +2556,27 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+          </>
+        } />
+        <Route path="/admin" element={
+          currentUser?.role === 'admin' ? (
+            <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              <div className="p-4 border-b border-neutral-100 flex items-center gap-4 bg-white shrink-0">
+                <Button onClick={() => navigate('/')} variant="ghost" className="text-xs font-bold">
+                  <ChevronRight className="w-4 h-4 rotate-180" />
+                  Back to Platform
+                </Button>
+                <div className="h-4 w-px bg-neutral-200" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">System Administration</p>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <AdminPanel currentUser={currentUser} />
+              </div>
+            </div>
+          ) : <Navigate to="/" />
+        } />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
     </div>
   );
 }
