@@ -468,23 +468,34 @@ async function startServer() {
   });
 
   // Connections
+  apiRouter.get('/connections/status/:userId/:targetId', (req, res) => {
+    const { userId, targetId } = req.params;
+    const connection = db.prepare('SELECT id FROM connections WHERE user_id = ? AND target_id = ?').get(userId, targetId);
+    res.json({ connected: !!connection });
+  });
+
   apiRouter.post('/connections', (req, res) => {
     const { user_id, target_id } = req.body;
-    const existing = db.prepare('SELECT id FROM connections WHERE user_id = ? AND target_id = ?').get(target_id, user_id);
+    
+    const existing = db.prepare('SELECT id FROM connections WHERE user_id = ? AND target_id = ?').get(user_id, target_id);
     if (existing) {
-      db.prepare('UPDATE connections SET status = ? WHERE id = ?').run('accepted', (existing as any).id);
-      res.json({ success: true, message: 'Connection accepted' });
-      return;
+      return res.json({ success: true, message: 'Already connected' });
     }
-    const existingReq = db.prepare('SELECT id FROM connections WHERE user_id = ? AND target_id = ?').get(user_id, target_id);
-    if (existingReq) {
-       return res.json({ success: true, message: 'Request already exists' });
-    }
-    const res_db = db.prepare('INSERT INTO connections (user_id, target_id, status) VALUES (?, ?, ?)').run(user_id, target_id, 'pending');
+
+    db.prepare('INSERT INTO connections (user_id, target_id, status) VALUES (?, ?, ?)').run(user_id, target_id, 'accepted');
+    
+    // Notification for the target
     const user = db.prepare('SELECT full_name FROM users WHERE id = ?').get(user_id) as any;
     db.prepare('INSERT INTO notifications (user_id, type, title, content) VALUES (?, ?, ?, ?)')
-      .run(target_id, 'connection', 'New Sync Request', `${user.full_name} wants to sync with you.`);
-    res.json({ success: true, id: res_db.lastInsertRowid });
+      .run(target_id, 'connection', 'New Connection', `${user.full_name} is now connected with you.`);
+      
+    res.json({ success: true });
+  });
+
+  apiRouter.delete('/connections/:userId/:targetId', (req, res) => {
+    const { userId, targetId } = req.params;
+    db.prepare('DELETE FROM connections WHERE user_id = ? AND target_id = ?').run(userId, targetId);
+    res.json({ success: true });
   });
 
   // Jobs

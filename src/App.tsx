@@ -61,13 +61,16 @@ import { useTranslation } from 'react-i18next';
 
 // --- Views ---
 
-const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond }: { 
+const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond, onSelectUser, isUnfolded, onUnfold }: { 
   post: Post; 
   onComment: (postId: number) => void; 
   isExpanded?: boolean; 
   currentUser: User | null; 
   onApply: (postId: number) => void;
   onRespond: (postId: number, type: 'quiz' | 'poll', index: number) => void;
+  onSelectUser: (userId: number) => void;
+  isUnfolded: boolean;
+  onUnfold: (postId: number | null) => void;
 }) => {
   const { t } = useTranslation();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -99,9 +102,11 @@ const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond
     <Card className="mb-4">
       <div className="p-4">
         <div className="flex items-center gap-3 mb-3">
-          <Avatar src={post.avatar_url} name={post.full_name} />
-          <div>
-            <h4 className="font-semibold text-neutral-900">{post.full_name}</h4>
+          <div className="cursor-pointer" onClick={() => onSelectUser(post.user_id)}>
+            <Avatar src={post.avatar_url} name={post.full_name} />
+          </div>
+          <div className="cursor-pointer" onClick={() => onSelectUser(post.user_id)}>
+            <h4 className="font-semibold text-neutral-900 hover:underline">{post.full_name}</h4>
             <p className="text-xs text-neutral-500">{post.headline}</p>
           </div>
           <div className="ml-auto text-[10px] text-neutral-400 font-mono uppercase tracking-wider">
@@ -111,8 +116,19 @@ const PostCard = ({ post, onComment, isExpanded, currentUser, onApply, onRespond
         
         <div className="prose prose-sm max-w-none text-neutral-700 mb-4">
           <div className="markdown-body">
-             <Markdown>{post.content}</Markdown>
+             <Markdown>
+               {isUnfolded ? post.content : post.content.length > 280 ? post.content.substring(0, 280) + '...' : post.content}
+             </Markdown>
           </div>
+          {post.content.length > 280 && (
+            <button 
+              onClick={() => onUnfold(isUnfolded ? null : post.id)}
+              className="text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-black mt-2 transition-colors flex items-center gap-1"
+            >
+              {isUnfolded ? 'View less' : 'Read more'}
+              <ArrowRight className={cn("w-3 h-3 transition-transform", isUnfolded ? "-rotate-90" : "rotate-0")} />
+            </button>
+          )}
         </div>
 
         {post.poll_data && (
@@ -274,13 +290,15 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [profileData, setProfileData] = useState<any>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedPost, setExpandedPost] = useState<number | null>(null);
+  const [unfoldPostId, setUnfoldPostId] = useState<number | null>(null);
   
   const [activeMainTab, setActiveMainTab] = useState<'feed' | 'jobs' | 'applicants'>('feed');
-  const [searchType, setSearchType] = useState<'all' | 'posts' | 'jobs' | 'users'>('all');
+  const [searchType, setSearchType] = useState<'posts' | 'jobs' | 'users' | null>(null);
   const [searchResults, setSearchResults] = useState<any>({ posts: [], jobs: [], users: [] });
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [applicants, setApplicants] = useState<any[]>([]);
@@ -598,15 +616,15 @@ export default function App() {
   }, [activeChatUser]);
 
   const fetchSearch = async () => {
-    if (!searchQuery && searchType === 'all') {
+    if (!searchQuery && !searchType) {
       fetchFeed();
       return;
     }
     setLoading(true);
     try {
-      const data = await fetchAPI(`/api/search?q=${searchQuery}&type=${searchType}`);
+      const data = await fetchAPI(`/api/search?q=${searchQuery}&type=${searchType || 'all'}`);
       setSearchResults(data);
-      if (searchType === 'posts' || searchType === 'all') setPosts(data.posts || []);
+      if (searchType === 'posts' || !searchType) setPosts(data.posts || []);
     } finally {
       setLoading(false);
     }
@@ -646,10 +664,37 @@ export default function App() {
   };
 
   const fetchProfile = async (id: number) => {
+    setProfileData(null);
+    setIsConnected(false);
     try {
       const viewerId = currentUser?.id ? `?viewerId=${currentUser.id}` : '';
       const data = await fetchAPI(`/api/profile/${id}${viewerId}`);
       setProfileData(data);
+      if (currentUser && currentUser.id !== id) {
+        const connStatus = await fetchAPI(`/api/connections/status/${currentUser.id}/${id}`);
+        setIsConnected(connStatus.connected);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleConnection = async (targetId: number) => {
+    if (!currentUser) return;
+    try {
+      if (isConnected) {
+        await fetchAPI(`/api/connections/${currentUser.id}/${targetId}`, {
+          method: 'DELETE'
+        });
+        setIsConnected(false);
+      } else {
+        await fetchAPI('/api/connections', {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.id, target_id: targetId })
+        });
+        setIsConnected(true);
+      }
+      fetchNotifications();
     } catch (err) {
       console.error(err);
     }
@@ -696,15 +741,6 @@ export default function App() {
       fetchJobs();
     }
   }, [currentUser, jobFilters, searchQuery, searchType]);
-
-  const requestSync = async (targetId: number) => {
-    if (!currentUser) return;
-    await fetchAPI('/api/connections', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: currentUser.id, target_id: targetId })
-    });
-    alert('Sync request sent!');
-  };
 
   const applyToJob = async () => {
     if (!currentUser || !applyingToJobId) return;
@@ -1095,18 +1131,25 @@ export default function App() {
                   Suggested Connections
                 </h3>
                 <div className="space-y-3">
-                  {[
-                    { name: 'Amna Al-Said', role: 'UX Director' },
-                    { name: 'Khalid Ben-Walid', role: 'Cloud Lead' },
-                    { name: 'Sara Al-Omani', role: 'AI Researcher' }
-                  ].map((contact, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2 rounded-xl hover:bg-neutral-50 transition-colors cursor-pointer group">
-                      <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center border border-neutral-200">
-                        <UserIcon className="w-4 h-4 text-neutral-400" />
-                      </div>
+                  {(recommendations.length > 0 ? recommendations : [
+                    { id: 2, full_name: 'Ahmed Al-Said', headline: 'Senior Software Architect' },
+                    { id: 4, full_name: 'Fatima Al-Balushi', headline: 'UX Designer' },
+                    { id: 6, full_name: 'Salim Al-Harthy', headline: 'Infrastructure Lead' }
+                  ]).map((contact) => (
+                    <div 
+                      key={contact.id} 
+                      onClick={() => {
+                        setSelectedUserId(contact.id);
+                        setActiveTab('profile');
+                        setIsRightOpen(true);
+                        setIsLeftOpen(false);
+                      }}
+                      className="flex items-center gap-3 p-2 rounded-xl hover:bg-neutral-50 transition-colors cursor-pointer group"
+                    >
+                      <Avatar src={contact.avatar_url} name={contact.full_name || contact.name} size="sm" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-bold text-neutral-900 truncate">{contact.name}</p>
-                        <p className="text-[9px] text-neutral-400 uppercase tracking-tight">{contact.role}</p>
+                        <p className="text-[11px] font-bold text-neutral-900 truncate">{contact.full_name || contact.name}</p>
+                        <p className="text-[9px] text-neutral-400 uppercase tracking-tight">{contact.headline || contact.role}</p>
                       </div>
                       <Plus className="w-3.5 h-3.5 text-neutral-300 group-hover:text-black transition-colors" />
                     </div>
@@ -1186,19 +1229,20 @@ export default function App() {
             {/* Search Tabs */}
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
               {[
-                { id: 'all', label: t('all') },
                 { id: 'posts', label: t('posts') },
                 { id: 'jobs', label: t('jobs') },
-                { id: 'users', label: t('users') },
-                ...(currentUser?.role === 'admin' ? [{ id: 'admin', label: t('admin') }] : [])
+                { id: 'users', label: t('users') }
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
-                    setSearchType(tab.id as any);
+                    if (searchType === tab.id) {
+                      setSearchType(null);
+                    } else {
+                      setSearchType(tab.id as any);
+                    }
                     if (tab.id === 'jobs') setActiveMainTab('jobs');
-                    else if (tab.id === 'admin') navigate('/admin');
-                    else if (['all', 'posts', 'users'].includes(tab.id)) setActiveMainTab('feed');
+                    else if (['posts', 'users'].includes(tab.id)) setActiveMainTab('feed');
                   }}
                   className={cn(
                     "px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap",
@@ -1243,7 +1287,11 @@ export default function App() {
                         {searchResults.users.filter((u: any) => u.is_company_rep).map((u: any) => (
                           <button 
                             key={u.id} 
-                            onClick={() => { setSelectedUserId(u.id); setIsRightOpen(true); }}
+                            onClick={() => { 
+                              setSelectedUserId(u.id); 
+                              setActiveTab('profile');
+                              setIsRightOpen(true); 
+                            }}
                             className="flex-shrink-0 w-32 flex flex-col items-center text-center group"
                           >
                             <div className="relative">
@@ -1267,7 +1315,11 @@ export default function App() {
                         {searchResults.users.filter((u: any) => !u.is_company_rep).map((u: any) => (
                           <button 
                             key={u.id} 
-                            onClick={() => { setSelectedUserId(u.id); setIsRightOpen(true); }}
+                            onClick={() => { 
+                              setSelectedUserId(u.id); 
+                              setActiveTab('profile');
+                              setIsRightOpen(true); 
+                            }}
                             className="flex-shrink-0 w-32 flex flex-col items-center text-center group"
                           >
                             <Avatar src={u.avatar_url} name={u.full_name} size="md" />
@@ -1402,10 +1454,10 @@ export default function App() {
                               "p-1.5 rounded-lg transition-all flex items-center gap-2 text-purple-600 hover:bg-purple-50",
                               showAiPrompt && "bg-purple-50 shadow-inner"
                             )}
-                            title="AI Command"
+                            title={t('ai_command')}
                           >
                             <Sparkles className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
-                            <span className="text-[10px] font-bold uppercase tracking-tight hidden sm:inline">AI Command</span>
+                            <span className="text-[10px] font-bold uppercase tracking-tight hidden sm:inline">{t('ai_command')}</span>
                           </button>
                         </div>
 
@@ -1415,7 +1467,7 @@ export default function App() {
                             onClick={submitPost}
                             className="px-4 py-1.5 bg-black text-white rounded-lg text-[9px] font-bold uppercase tracking-[0.15em] hover:bg-neutral-800 disabled:opacity-30 transition-all flex items-center gap-2"
                           >
-                            Publish
+                            {t('publish')}
                           </button>
                         </div>
                       </div>
@@ -1425,7 +1477,7 @@ export default function App() {
                           <input 
                             autoFocus
                             type="text"
-                            placeholder="E.g. 'Shorten this', 'Professional tone', 'Arabic'..."
+                            placeholder={t('ai_instruction_placeholder')}
                             className="flex-1 bg-transparent border-none text-[11px] px-3 py-1.5 outline-none font-medium placeholder:text-purple-300 text-purple-900"
                             value={aiInstruction}
                             onChange={(e) => setAiInstruction(e.target.value)}
@@ -1651,6 +1703,13 @@ export default function App() {
                     isExpanded={expandedPost === post.id}
                     onComment={(id) => setExpandedPost(expandedPost === id ? null : id)} 
                     onRespond={handlePostResponse}
+                    onSelectUser={(id) => {
+                      setSelectedUserId(id);
+                      setActiveTab('profile');
+                      setIsRightOpen(true);
+                    }}
+                    isUnfolded={unfoldPostId === post.id}
+                    onUnfold={setUnfoldPostId}
                   />
                 ))}
               </div>
@@ -2523,6 +2582,7 @@ export default function App() {
                       <ProfilePanel 
                         profileData={profileData}
                         currentUser={currentUser}
+                        isConnected={isConnected}
                         onEdit={() => {
                           if (profileData) {
                             setProfileForm({ 
@@ -2546,7 +2606,7 @@ export default function App() {
                         }}
                         onNavigateToAdmin={() => { navigate('/admin'); setIsRightOpen(false); }}
                         onSelectUserId={(id) => setSelectedUserId(id)}
-                        onRequestSync={(id) => requestSync(id)}
+                        onRequestSync={(id) => handleToggleConnection(id)}
                         onMessage={(user) => { setActiveTab('messages'); setActiveChatUser(user); }}
                         onAddCVItem={addCVItem}
                         onAddSkill={addSkill}

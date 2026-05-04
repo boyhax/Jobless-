@@ -32,6 +32,7 @@ interface ProfilePanelProps {
   onNavigateToAdmin: () => void;
   onSelectUserId: (id: number) => void;
   onRequestSync?: (id: number) => void;
+  isConnected?: boolean;
   onMessage?: (user: { id: number; full_name: string; avatar_url: string | null }) => void;
   onAddCVItem?: (item: any) => Promise<void>;
   onAddSkill?: (skill: any) => Promise<void>;
@@ -47,6 +48,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
   onNavigateToAdmin,
   onSelectUserId,
   onRequestSync,
+  isConnected,
   onMessage,
   onAddCVItem,
   onAddSkill,
@@ -159,11 +161,23 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
           ) : (
             <div className="flex gap-2">
               <Button 
-                variant="primary" 
-                className="flex-1 rounded-2xl h-12 text-[10px] uppercase font-black tracking-widest active:scale-[0.98] transition-all"
+                variant={isConnected ? "outline" : "primary"}
+                className={cn(
+                  "flex-1 rounded-2xl h-12 text-[10px] uppercase font-black tracking-widest active:scale-[0.98] transition-all",
+                  isConnected ? "border-green-500 text-green-500 hover:bg-red-50 hover:border-red-500 hover:text-red-500 group" : "shadow-xl shadow-black/10"
+                )}
                 onClick={() => onRequestSync?.(profileData.id)}
               >
-                Request Synergy
+                {isConnected ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 group-hover:hidden" />
+                    <Trash2 className="w-4 h-4 hidden group-hover:block" />
+                    <span className="group-hover:hidden">Connected</span>
+                    <span className="hidden group-hover:block">Disconnect</span>
+                  </span>
+                ) : (
+                  'Connect'
+                )}
               </Button>
               <Button 
                 variant="outline" 

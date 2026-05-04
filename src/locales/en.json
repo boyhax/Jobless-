@@ -17,5 +17,18 @@
   "Profile.synths_recv": "Syncs Recv",
   "Profile.views": "Profile Views",
   "Sync request sent!": "Sync request sent!",
+  "all": "All",
+  "posts": "Posts",
+  "jobs": "Jobs",
+  "users": "Users",
+  "admin": "Admin",
+  "publish": "Publish",
+  "ai_magic": "AI Magic",
+  "ai_command": "AI Command",
+  "cancel": "Cancel",
+  "execute_magic": "Execute Magic",
+  "magic_in_progress": "Magic in progress...",
+  "ai_search_placeholder": "What kind of talent are you looking for today? (e.g., 'React developer in Muscat')",
+  "ai_instruction_placeholder": "E.g. 'Shorten this', 'Professional tone', 'In Arabic'...",
   "|": "|"
 }
