@@ -4,7 +4,7 @@ import 'express-async-errors';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { Surreal, RecordId } from 'surrealdb';
-import { SurrealAdapter, IDBAdapter } from './src/lib/db.js';
+import { SurrealAdapter, IDBAdapter } from '../src/lib/db.js';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 
