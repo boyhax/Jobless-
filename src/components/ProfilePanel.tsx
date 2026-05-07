@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { useTranslation } from "react-i18next";
 import {
   User as UserIcon,
@@ -128,7 +130,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
             <CheckCircle2 className="w-4 h-4 text-green-500" />
           </div>
           <p className="text-[10px] text-neutral-500 font-mono uppercase tracking-widest mt-1">
-            {profileData.headline || "Synapse Participant"}
+            {profileData.headline || t("Profile.participant")}
           </p>
           <div className="flex items-center justify-center gap-4 mt-2">
             {profileData.place_name && (
@@ -243,7 +245,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
       {profileData.bio && (
         <section className="bg-neutral-50 p-6 rounded-[32px] border border-neutral-100 italic text-xs leading-relaxed text-neutral-600 mx-4">
           <div className="markdown-body">
-            <Markdown>{profileData.bio}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{profileData.bio}</Markdown>
           </div>
         </section>
       )}
@@ -325,7 +327,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
                 </select>
                 <input
                   type="text"
-                  placeholder="Title / Role"
+                  placeholder={t("Profile.role_placeholder")}
                   value={cvForm.title}
                   onChange={(e) =>
                     setCvForm({ ...cvForm, title: e.target.value })
@@ -334,7 +336,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
                 />
                 <input
                   type="text"
-                  placeholder="Institution / Company"
+                  placeholder={t("Profile.institution_placeholder")}
                   value={cvForm.subtitle}
                   onChange={(e) =>
                     setCvForm({ ...cvForm, subtitle: e.target.value })
@@ -360,7 +362,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
                   />
                 </div>
                 <textarea
-                  placeholder="Key Responsibilities or Achievements..."
+                  placeholder={t("Profile.achievements_placeholder")}
                   value={cvForm.description}
                   onChange={(e) =>
                     setCvForm({ ...cvForm, description: e.target.value })
@@ -425,7 +427,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
               </p>
               {item.description && (
                 <div className="markdown-body text-[10px] text-neutral-500 leading-relaxed mb-3">
-                  <Markdown>{item.description}</Markdown>
+                  <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.description}</Markdown>
                 </div>
               )}
             </div>
@@ -452,7 +454,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
           <div className="mb-8 p-5 bg-neutral-50 rounded-[32px] border border-neutral-200 space-y-4 animate-in fade-in zoom-in-95 shadow-inner">
             <input
               className="w-full bg-white border border-neutral-200 rounded-2xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-black outline-none"
-              placeholder="Skill Name (e.g. React)..."
+              placeholder={t("Profile.skill_placeholder")}
               value={skillForm.name}
               onChange={(e) =>
                 setSkillForm({ ...skillForm, name: e.target.value })
@@ -460,7 +462,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
             />
             <div className="flex items-center justify-between px-2">
               <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">
-                Proficiency
+                {t("Profile.proficiency")}
               </span>
               <input
                 type="range"
@@ -527,7 +529,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
                     }}
                     className="bg-black/5 hover:bg-black/10 px-1.5 py-0.5 rounded text-[8px] font-black transition-colors ml-1"
                   >
-                    VERIFY
+                    {t("Profile.verify_action")}
                   </button>
                 ) : null}
               </div>
@@ -535,11 +537,11 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
               {verifyingSkillName === skill.name && (
                 <div className="mt-2 p-4 bg-white border border-neutral-200 rounded-2xl shadow-xl z-10 animate-in fade-in zoom-in-95">
                   <p className="text-[8px] font-black text-neutral-400 uppercase mb-2 tracking-widest">
-                    Prove Expertise
+                    {t("Profile.prove_expertise")}
                   </p>
                   <input
                     className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-2 text-[10px] mb-3 outline-none focus:ring-1 focus:ring-black"
-                    placeholder="Credential URL..."
+                    placeholder={t("Profile.credential_placeholder")}
                     value={verificationUrlInput}
                     onChange={(e) => setVerificationUrlInput(e.target.value)}
                   />
@@ -588,7 +590,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
           <div className="mb-8 p-5 bg-neutral-50 rounded-[32px] border border-neutral-200 space-y-4 shadow-inner">
             <input
               className="w-full bg-white border border-neutral-200 rounded-2xl px-4 py-3 text-xs font-bold"
-              placeholder="Project Instance Name..."
+              placeholder={t("Profile.project_name_placeholder")}
               value={portfolioForm.title}
               onChange={(e) =>
                 setPortfolioForm({ ...portfolioForm, title: e.target.value })
@@ -596,7 +598,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
             />
             <textarea
               className="w-full bg-white border border-neutral-200 rounded-2xl px-4 py-3 text-xs min-h-[100px]"
-              placeholder="Architectural Details / Outcome..."
+              placeholder={t("Profile.project_details_placeholder")}
               value={portfolioForm.description}
               onChange={(e) =>
                 setPortfolioForm({
@@ -655,7 +657,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
                 <ExternalLink className="w-3.5 h-3.5 text-neutral-300 group-hover:text-black transition-all" />
               </div>
               <div className="markdown-body text-[11px] text-neutral-500 leading-relaxed line-clamp-2 md:line-clamp-none mb-4">
-                <Markdown>{item.description}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.description}</Markdown>
               </div>
               {item.url && (
                 <a

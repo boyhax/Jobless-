@@ -2,21 +2,87 @@ import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, CreditCard, Database, RotateCcw, BarChart3, TrendingUp, ShieldCheck, RefreshCw, Briefcase } from 'lucide-react';
 import { fetchAPI, cn } from '../lib/utils';
 import { motion } from 'motion/react';
+import { useTranslation } from 'react-i18next';
 
 interface AdminPanelProps {
   currentUser: any;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'system'>('analytics');
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'data' | 'system'>('analytics');
   const [analytics, setAnalytics] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [topics, setTopics] = useState<any[]>([]);
+  const [seedCount, setSeedCount] = useState<number>(5);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     fetchAnalytics();
     fetchUsers();
-  }, []);
+    if (activeTab === 'data') {
+      fetchAdminContent();
+    }
+  }, [activeTab]);
+
+  const fetchAdminContent = async () => {
+    try {
+      setIsLoading(true);
+      const [ps, js, ts] = await Promise.all([
+        fetchAPI('/api/admin/content/posts', { headers: { 'x-user-id': currentUser.id.toString() } }),
+        fetchAPI('/api/admin/content/jobs', { headers: { 'x-user-id': currentUser.id.toString() } }),
+        fetchAPI('/api/admin/content/topics', { headers: { 'x-user-id': currentUser.id.toString() } })
+      ]);
+      setPosts(ps);
+      setJobs(js);
+      setTopics(ts);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateSeed = async () => {
+    setIsLoading(true);
+    try {
+      await fetchAPI('/api/admin/seed/generate', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-user-id': currentUser.id.toString() 
+        },
+        body: JSON.stringify({ count: seedCount })
+      });
+      alert(t('Admin.seed_success'));
+      fetchAdminContent();
+      fetchAnalytics();
+    } catch (e: any) {
+      alert(`Generation failed: ${e.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClearSeed = async () => {
+    if (!confirm('Delete all records marked as [is_seed: true]?')) return;
+    setIsLoading(true);
+    try {
+      await fetchAPI('/api/admin/seed/clear', {
+        method: 'POST',
+        headers: { 'x-user-id': currentUser.id.toString() }
+      });
+      alert(t('Admin.seed_cleared'));
+      fetchAdminContent();
+      fetchAnalytics();
+    } catch (e: any) {
+      alert(`Clear failed: ${e.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchAnalytics = async () => {
     try {
@@ -48,10 +114,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
         method: 'POST',
         headers: { 'x-user-id': currentUser.id.toString() }
       });
-      alert('Seeding complete. Please refresh to see changes.');
+      alert(t('Admin.seeding_complete'));
       window.location.reload();
     } catch (e) {
-      alert('Seeding failed');
+      alert(t('Admin.seeding_failed'));
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +151,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
       fetchUsers();
       fetchAnalytics();
     } catch (e) {
-      alert('Update failed');
+      alert(t('Admin.update_failed'));
     }
   };
 
@@ -111,6 +177,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
             className={cn("px-4 py-2 rounded-lg text-xs font-bold transition-all", activeTab === 'users' ? "bg-white shadow-sm text-black" : "text-neutral-500 hover:text-black")}
           >
             User Management
+          </button>
+          <button 
+            onClick={() => setActiveTab('data')}
+            className={cn("px-4 py-2 rounded-lg text-xs font-bold transition-all", activeTab === 'data' ? "bg-white shadow-sm text-black" : "text-neutral-500 hover:text-black")}
+          >
+            Data
           </button>
           <button 
             onClick={() => setActiveTab('system')}
@@ -201,6 +273,121 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'data' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white border border-neutral-200 p-6 rounded-2xl shadow-sm space-y-4">
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-indigo-500" />
+                <h3 className="font-black">Seed Generator</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="number" 
+                  value={seedCount}
+                  onChange={(e) => setSeedCount(parseInt(e.target.value))}
+                  className="w-24 bg-neutral-100 border-none rounded-lg p-2 text-sm font-bold"
+                  min="1"
+                  max="50"
+                  placeholder="Count"
+                />
+                <button 
+                  onClick={handleGenerateSeed}
+                  disabled={isLoading}
+                  className="flex-1 bg-indigo-500 text-white rounded-lg p-2 text-xs font-bold hover:bg-indigo-600 transition-all disabled:opacity-50"
+                >
+                  Generate Content
+                </button>
+              </div>
+              <button 
+                onClick={handleClearSeed}
+                disabled={isLoading}
+                className="w-full bg-red-100 text-red-600 rounded-lg p-2 text-xs font-bold hover:bg-red-200 transition-all"
+              >
+                Clear Seed Data
+              </button>
+            </div>
+            <div className="bg-white border border-neutral-200 p-6 rounded-2xl shadow-sm flex flex-col justify-center">
+              <div className="text-center space-y-2">
+                <RotateCcw className="w-8 h-8 text-neutral-300 mx-auto" />
+                <p className="text-sm font-bold">Content Overview</p>
+                <div className="flex justify-center gap-6">
+                  <div className="text-center">
+                    <p className="text-xl font-black">{posts.length}</p>
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase">Posts</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-black">{jobs.length}</p>
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase">Jobs</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-black">{topics.length}</p>
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase">Topics</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+             {/* Posts List */}
+             <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
+               <div className="p-4 bg-neutral-50 border-b border-neutral-100 font-bold text-xs uppercase tracking-widest text-neutral-500 flex justify-between items-center">
+                 <span>All Posts</span>
+                 <span className="text-[10px] bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">{posts.length}</span>
+               </div>
+               <div className="overflow-y-auto divide-y divide-neutral-50">
+                 {posts.map(p => (
+                   <div key={p.id} className="p-4 space-y-1">
+                     <div className="flex justify-between items-start">
+                       <span className="text-[10px] font-bold text-blue-500">{p.user?.full_name || 'System'}</span>
+                       {p.is_seed && <span className="text-[8px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-black uppercase">Seed</span>}
+                     </div>
+                     <p className="text-xs text-neutral-600 line-clamp-2">{p.content}</p>
+                     <p className="text-[9px] text-neutral-400">{new Date(p.created_at).toLocaleString()}</p>
+                   </div>
+                 ))}
+               </div>
+             </div>
+
+             {/* Jobs List */}
+             <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
+               <div className="p-4 bg-neutral-50 border-b border-neutral-100 font-bold text-xs uppercase tracking-widest text-neutral-500 flex justify-between items-center">
+                 <span>All Jobs</span>
+                 <span className="text-[10px] bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">{jobs.length}</span>
+               </div>
+               <div className="overflow-y-auto divide-y divide-neutral-50">
+                 {jobs.map(j => (
+                   <div key={j.id} className="p-4 space-y-1">
+                     <div className="flex justify-between items-start">
+                       <span className="text-[10px] font-bold text-neutral-800">{j.title} @ {j.company_name}</span>
+                       {j.is_seed && <span className="text-[8px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-black uppercase">Seed</span>}
+                     </div>
+                     <p className="text-[9px] text-neutral-400 font-mono italic">{j.id}</p>
+                     <p className="text-[9px] text-neutral-400">{new Date(j.created_at).toLocaleString()}</p>
+                   </div>
+                 ))}
+               </div>
+             </div>
+
+             {/* Topics List */}
+             <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden flex flex-col max-h-[400px]">
+               <div className="p-4 bg-neutral-50 border-b border-neutral-100 font-bold text-xs uppercase tracking-widest text-neutral-500 flex justify-between items-center">
+                 <span>All Topics</span>
+                 <span className="text-[10px] bg-neutral-200 text-neutral-600 px-2 py-0.5 rounded-full">{topics.length}</span>
+               </div>
+               <div className="overflow-y-auto p-4 flex flex-wrap gap-2">
+                 {topics.map(t => (
+                   <span key={t.id} className="px-2 py-1 bg-neutral-100 text-neutral-600 text-[10px] font-bold rounded-lg border border-neutral-200">
+                     #{t.name}
+                   </span>
+                 ))}
+               </div>
+             </div>
+          </div>
         </div>
       )}
 

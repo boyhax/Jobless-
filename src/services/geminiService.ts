@@ -79,11 +79,17 @@ export const geminiService = {
       
       Instruction: 
       - If the user provided a request/instruction, follow it precisely to modify or generate the post content.
-      - If the current post content is provided and the instruction is general, rewrite the content to be more professional, punchy, and engaging.
-      - If only an instruction is provided (no content), write a full, engaging, and detailed post from scratch following that instruction. 
-      - Focus on the Omani professional market.
-      - Use Markdown formatting (bold, bullet points, headers) to make the content well-structured and highly readable.
-      - Include relevant professional hashtags.
+      - If only an instruction is provided (no content), write a full, engaging, and detailed post from scratch.
+      - If current post content is provided, rewrite/optimize it based on the instruction.
+      - Focus on the Omani professional market (ProSync Oman).
+      - Output the post content in a clean, professional Markdown format (.md).
+      - High-level Structure:
+        1. Start with a punchy headline using an H2 header (e.g., ## The Future of Tech in Oman).
+        2. Follow with 2-3 engaging paragraphs using professional yet encouraging tone.
+        3. Use bullet points for key takeaways or highlights.
+        4. End with 3-5 relevant professional hashtags (e.g., #OmanTech #Innovation).
+      - Do NOT use H1 headers (keep it to H2/H3 for feed compatibility).
+      - Do NOT wrap the result in code blocks like \`\`\`markdown.
       - Return JSON object: { optimizedContent, suggestedTags, quiz, poll }`;
 
       const response = await ai.models.generateContent({
@@ -120,6 +126,44 @@ export const geminiService = {
       return JSON.parse(response.text || "null");
     } catch (error) {
       console.error("AI magic post failed:", error);
+      return null;
+    }
+  },
+
+  async magicJobDescription(title: string, company: string, currentDescription: string, instruction?: string) {
+    try {
+      const prompt = `You are a professional technical recruiter for ProSync Oman.
+      Job Title: "${title || "(TBD)"}"
+      Company: "${company || "(TBD)"}"
+      Current Description: "${currentDescription || ""}"
+      Instruction: "${instruction || "Write an engaging, professional job description."}"
+      
+      Requirements:
+      - Use professional Markdown (.md).
+      - Include sections: ## Role Overview, ### Key Responsibilities, ### Requirements.
+      - **CRITICAL**: Use specific bracket notation for skills: [SkillName] (e.g., [React], [Project Management]).
+      - Mention the Omani market context.
+      - Include 3-5 hashtags at the end (e.g., #OmanJobs #MuscatCareers).
+      - Return JUST the Markdown content as a JSON object: { description }.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              description: { type: Type.STRING }
+            },
+            required: ["description"]
+          }
+        }
+      });
+
+      return JSON.parse(response.text || "null");
+    } catch (error) {
+      console.error("AI job magic failed:", error);
       return null;
     }
   },

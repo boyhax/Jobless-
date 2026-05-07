@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Routes,
@@ -71,6 +72,8 @@ import {
 import { geminiService } from "./services/geminiService";
 import { formatDistanceToNow, isValid } from "date-fns";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { useTranslation } from "react-i18next";
 
 // --- Views ---
@@ -247,8 +250,8 @@ const PostCard = ({
                   <Trash2 className="w-6 h-6 text-red-500" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black tracking-tight">Delete Post?</h3>
-                  <p className="text-sm text-neutral-500">This action cannot be undone. The post and its comments will be permanently removed.</p>
+                  <h3 className="text-lg font-black tracking-tight">{t("App.delete_post_title")}</h3>
+                  <p className="text-sm text-neutral-500">{t("App.delete_post_confirm")}</p>
                 </div>
                 <div className="flex gap-3">
                   <Button
@@ -257,14 +260,14 @@ const PostCard = ({
                     onClick={() => setIsConfirmingDelete(false)}
                     disabled={isDeleting}
                   >
-                    Cancel
+                    {t("cancel")}
                   </Button>
                   <Button
                     className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 text-white"
                     onClick={handleDelete}
                     disabled={isDeleting}
                   >
-                    {isDeleting ? "Deleting..." : "Delete"}
+                    {isDeleting ? t("Auth.verifying") : t("App.delete")}
                   </Button>
                 </div>
               </motion.div>
@@ -274,7 +277,7 @@ const PostCard = ({
 
         <div className="prose prose-sm max-w-none text-neutral-700 mb-4">
           <div className="markdown-body">
-            <Markdown>
+            <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>
               {isUnfolded
                 ? post.content
                 : (post?.content?.length || 0) > 280
@@ -287,7 +290,7 @@ const PostCard = ({
               onClick={() => onUnfold(isUnfolded ? null : post.id)}
               className="text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-black mt-2 transition-colors flex items-center gap-1"
             >
-              {isUnfolded ? "View less" : "Read more"}
+              {isUnfolded ? t("App.view_less") : t("App.read_more")}
               <ArrowRight
                 className={cn(
                   "w-3 h-3 transition-transform",
@@ -303,16 +306,16 @@ const PostCard = ({
             <div className="flex items-center gap-2 mb-3">
               <Vote className="w-3.5 h-3.5 text-blue-500" />
               <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                Career Poll
+                {t("App.career_poll")}
               </span>
             </div>
             <p className="text-xs font-bold mb-3">
               {(() => {
                 try {
                   const data = typeof post.poll_data === 'string' ? JSON.parse(post.poll_data) : post.poll_data;
-                  return data?.question || "Poll";
+                  return data?.question || t("App.career_poll");
                 } catch (e) {
-                  return "Poll";
+                  return t("App.career_poll");
                 }
               })()}
             </p>
@@ -373,16 +376,16 @@ const PostCard = ({
             <div className="flex items-center gap-2 mb-3">
               <Trophy className="w-3.5 h-3.5 text-yellow-500" />
               <span className="text-[10px] font-bold text-yellow-600 uppercase tracking-widest">
-                Skill Quiz
+                {t("App.skill_quiz")}
               </span>
             </div>
             <p className="text-xs font-bold mb-3">
               {(() => {
                 try {
                   const data = typeof post.quiz_data === 'string' ? JSON.parse(post.quiz_data) : post.quiz_data;
-                  return data?.question || "Quiz";
+                  return data?.question || t("App.skill_quiz");
                 } catch (e) {
-                  return "Quiz";
+                  return t("App.skill_quiz");
                 }
               })()}
             </p>
@@ -439,10 +442,10 @@ const PostCard = ({
             </div>
             <div className="flex-1">
               <p className="text-xs font-semibold text-neutral-800">
-                Attached Professional Milestone
+                {t("App.professional_milestone")}
               </p>
               <p className="text-[10px] text-neutral-500">
-                This user and our nodes have verified this experience entry.
+                {t("App.verified_experience")}
               </p>
             </div>
             <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -475,11 +478,11 @@ const PostCard = ({
             className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-black transition-colors"
           >
             <MessageSquare className="w-4 h-4" />
-            <span>{post.comment_count} Comments</span>
+            <span>{post.comment_count} {t("App.comments")}</span>
           </button>
           <button className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-black transition-colors">
             <Plus className="w-4 h-4" />
-            <span>Support</span>
+            <span>{t("App.support")}</span>
           </button>
         </div>
 
@@ -491,7 +494,7 @@ const PostCard = ({
                 <div className="bg-neutral-50 rounded-lg p-2 flex-1">
                   <p className="text-[10px] font-bold mb-1">{c.full_name}</p>
                   <div className="markdown-body text-xs text-neutral-700">
-                    <Markdown>{c.content}</Markdown>
+                    <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{c.content}</Markdown>
                   </div>
                 </div>
               </div>
@@ -501,7 +504,7 @@ const PostCard = ({
                 type="text"
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Write a comment..."
+                placeholder={t("App.write_comment")}
                 className="flex-1 text-xs bg-neutral-100 border-none rounded-lg px-3 py-2"
                 onKeyDown={(e) => e.key === "Enter" && submitComment()}
               />
@@ -655,6 +658,7 @@ export default function App() {
   const [userFiles, setUserFiles] = useState<FileItem[]>([]);
   const [galleryFilter, setGalleryFilter] = useState<string>("all");
   const [topics, setTopics] = useState<string[]>([]);
+  const [followedTopics, setFollowedTopics] = useState<string[]>([]);
   const [places, setPlaces] = useState<any[]>([]);
   const [isSetupNeeded, setIsSetupNeeded] = useState(false);
   const [setupLoading, setSetupLoading] = useState(true);
@@ -682,6 +686,22 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debugOtp, setDebugOtp] = useState<string | null>(null);
+
+  const parentRef = useRef<HTMLElement>(null);
+
+  const postVirtualizer = useVirtualizer({
+    count: posts.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 350,
+    overscan: 5,
+  });
+
+  const jobVirtualizer = useVirtualizer({
+    count: jobs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 220,
+    overscan: 5,
+  });
 
   const handleCheckEmail = async () => {
     if (!email) return;
@@ -875,8 +895,36 @@ export default function App() {
 
   const fetchTopics = async () => {
     try {
-      const data = await fetchAPI("/api/topics");
+      const url = currentUser ? `/api/topics?userId=${currentUser.id}` : "/api/topics";
+      const data = await fetchAPI(url);
       setTopics(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchFollowedTopics = async () => {
+    if (!currentUser) return;
+    try {
+      const data = await fetchAPI(`/api/topics/followed/${currentUser.id}`);
+      if (data) setFollowedTopics(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleTopicFollow = async (topic: string) => {
+    if (!currentUser) return;
+    const tName = topic.startsWith("#") ? topic.slice(1) : topic;
+    const isFollowed = followedTopics.includes(tName);
+    const endpoint = isFollowed ? "/api/topics/unfollow" : "/api/topics/follow";
+
+    try {
+      await fetchAPI(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ user_id: currentUser.id, topic }),
+      });
+      fetchFollowedTopics();
     } catch (err) {
       console.error(err);
     }
@@ -900,6 +948,7 @@ export default function App() {
     fetchTopics();
     fetchRecommendations();
     if (currentUser) {
+      fetchFollowedTopics();
       if (!selectedUserId) setSelectedUserId(currentUser.id);
       if (currentUser.place_id && selectedPlaceId === "all") {
         setSelectedPlaceId(currentUser.place_id);
@@ -926,6 +975,13 @@ export default function App() {
   useEffect(() => {
     fetchFeed();
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchTopics();
+      fetchRecommendations();
+    }
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (selectedUserId) fetchProfile(selectedUserId);
@@ -1351,6 +1407,27 @@ export default function App() {
     }
   };
 
+  const handleAiMagicJob = async (instruction?: string) => {
+    setIsAiLoading(true);
+    try {
+      const result = await geminiService.magicJobDescription(
+        newJob.title,
+        currentUser?.full_name || "",
+        newJob.description,
+        instruction
+      );
+      if (result && result.description) {
+        setNewJob({ ...newJob, description: result.description });
+        setShowAiPrompt(false);
+        setAiInstruction("");
+      }
+    } catch (err) {
+      console.error("AI Job Magic failed:", err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleAiGenerateInteractive = async (type: "quiz" | "poll") => {
     if (!postContent) return;
     setIsAiLoading(true);
@@ -1711,20 +1788,36 @@ export default function App() {
                           {t("App.trending_pulse") || "Trending Pulse"}
                         </h3>
                         <div className="flex flex-wrap gap-2">
-                          {topics.map((topic) => (
-                            <button
-                              key={topic}
-                              onClick={() => {
-                                setSearchQuery(topic);
-                                setActiveMainTab("feed");
-                                setIsLeftOpen(false);
-                              }}
-                              className="px-3 py-1.5 rounded-full text-[10px] font-bold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 transition-colors flex items-center gap-1.5 group"
-                            >
-                              <span>{topic}</span>
-                              <TrendingUp className="w-2.5 h-2.5 text-neutral-300 group-hover:text-green-500 transition-colors" />
-                            </button>
-                          ))}
+                          {topics.map((topic) => {
+                            const tName = topic.startsWith('#') ? topic.slice(1) : topic;
+                            const isFollowed = followedTopics.includes(tName);
+                            
+                            return (
+                              <div key={topic} className="flex items-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    setSearchQuery(topic);
+                                    setActiveMainTab("feed");
+                                    setIsLeftOpen(false);
+                                  }}
+                                  className="px-3 py-1.5 rounded-full text-[10px] font-bold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 transition-colors flex items-center gap-1.5 group"
+                                >
+                                  <span>{topic}</span>
+                                  <TrendingUp className="w-2.5 h-2.5 text-neutral-300 group-hover:text-green-500 transition-colors" />
+                                </button>
+                                <button
+                                  onClick={() => toggleTopicFollow(topic)}
+                                  className={cn(
+                                    "p-1.5 rounded-full transition-colors",
+                                    isFollowed ? "text-blue-500 bg-blue-50" : "text-neutral-300 hover:text-blue-500 hover:bg-blue-50"
+                                  )}
+                                  title={isFollowed ? "Unfollow" : "Follow"}
+                                >
+                                  {isFollowed ? <CheckCircle2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </section>
 
@@ -1732,7 +1825,7 @@ export default function App() {
                       <section className="space-y-4">
                         <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 flex items-center gap-2">
                           <Users className="w-3 h-3 text-purple-500" />
-                          Suggested Connections
+                          {t("App.suggested_connections")}
                         </h3>
                         <div className="space-y-3">
                           {recommendations?.length > 0 ? (
@@ -1766,7 +1859,7 @@ export default function App() {
                           ) : (
                             <div className="p-4 bg-neutral-50 rounded-xl border border-dashed border-neutral-200">
                               <p className="text-[10px] text-neutral-400 text-center font-bold uppercase tracking-widest leading-relaxed">
-                                No discovery nodes found.<br/>Sync more to explore.
+                                {t("App.no_discovery_nodes")}<br/>{t("App.sync_more_to_explore")}
                               </p>
                             </div>
                           )}
@@ -1778,7 +1871,7 @@ export default function App() {
               </motion.aside>
 
               {/* CENTER COLUMN: THE FEED */}
-              <main className="flex-1 h-full overflow-y-auto bg-neutral-50 relative">
+              <main ref={parentRef} className="flex-1 h-full overflow-y-auto bg-neutral-50 relative">
                 <div className="max-w-2xl mx-auto px-4 pt-4 pb-8 md:pt-8 md:pb-12">
                   {/* Integrated Search Console */}
                   <div className="flex flex-col gap-3 mb-8">
@@ -1849,7 +1942,7 @@ export default function App() {
                         ) : (
                           <div className="flex items-center gap-3">
                             <div className="hidden sm:block text-[10px] font-black uppercase tracking-widest text-neutral-400">
-                              {t("Platform.join_network") || "Join the Network"}
+                              {t("Platform.join_network")}
                             </div>
                             <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center border border-black shadow-lg shadow-black/10">
                               <Plus className="w-4 h-4 text-white" />
@@ -1922,7 +2015,7 @@ export default function App() {
                                         variant="ghost"
                                         className="h-6 text-[8px] p-0"
                                       >
-                                        View Jobs
+                                        {t("App.jobs")}
                                       </Button>
                                     </div>
                                   </Card>
@@ -1965,7 +2058,7 @@ export default function App() {
                                         {u.full_name}
                                       </p>
                                       <p className="text-[8px] text-neutral-400 truncate w-full uppercase">
-                                        Verified Org
+                                        {t("App.verified_org")}
                                       </p>
                                     </button>
                                   ))}
@@ -2023,7 +2116,7 @@ export default function App() {
                             />
                             <div className="flex-1 flex flex-col relative min-h-[44px]">
                               <textarea
-                                placeholder="What's moving in your career? Use #tags or / to add quiz/poll..."
+                                placeholder={t("App.post_placeholder")}
                                 value={postContent}
                                 onFocus={() => setIsPostFocused(true)}
                                 onBlur={() => {
@@ -2056,7 +2149,7 @@ export default function App() {
                               {showSlashMenu && (
                                 <div className="absolute left-0 bottom-full mb-2 bg-white border border-neutral-200 rounded-xl shadow-xl p-1 z-50 min-w-[140px] animate-in fade-in slide-in-from-bottom-2">
                                   <p className="px-3 py-1.5 text-[7px] font-bold text-neutral-400 uppercase tracking-widest border-b border-neutral-50">
-                                    Career Interactive
+                                    {t("App.career_interactive")}
                                   </p>
                                   <button
                                     onClick={() => {
@@ -2072,7 +2165,7 @@ export default function App() {
                                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
                                   >
                                     <Vote className="w-3 h-3 text-blue-500" />
-                                    Create Poll
+                                    {t("App.create_poll")}
                                   </button>
                                   <button
                                     onClick={() => {
@@ -2089,7 +2182,7 @@ export default function App() {
                                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[9px] font-bold text-neutral-600 hover:bg-neutral-50 rounded-lg transition-colors text-left"
                                   >
                                     <Trophy className="w-3 h-3 text-yellow-500" />
-                                    Create Quiz
+                                    {t("App.create_quiz")}
                                   </button>
                                 </div>
                               )}
@@ -2123,7 +2216,7 @@ export default function App() {
                                       )}
                                     />
                                     <span className="text-[9px] font-bold hidden md:inline uppercase tracking-widest">
-                                      Attach
+                                      {t("App.attach")}
                                     </span>
                                   </button>
 
@@ -2139,7 +2232,7 @@ export default function App() {
                                       >
                                         <FileText className="w-4 h-4 text-blue-500" />
                                         <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">
-                                          CV
+                                          {t("App.cv")}
                                         </span>
                                       </button>
                                       <button
@@ -2152,7 +2245,7 @@ export default function App() {
                                       >
                                         <LinkIcon className="w-4 h-4 text-purple-500" />
                                         <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">
-                                          Link
+                                          {t("App.link")}
                                         </span>
                                       </button>
                                       <button
@@ -2166,7 +2259,7 @@ export default function App() {
                                       >
                                         <FolderOpen className="w-4 h-4 text-orange-500" />
                                         <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">
-                                          Files
+                                          {t("App.files")}
                                         </span>
                                       </button>
                                       <button
@@ -2182,7 +2275,7 @@ export default function App() {
                                       >
                                         <Vote className="w-4 h-4 text-green-500" />
                                         <span className="text-[8px] font-bold text-neutral-400 uppercase hidden sm:inline">
-                                          Poll
+                                          {t("App.poll")}
                                         </span>
                                       </button>
                                     </div>
@@ -2347,7 +2440,7 @@ export default function App() {
                                       }
                                       className="text-[10px] font-bold text-blue-500 hover:underline flex items-center gap-1"
                                     >
-                                      <Plus className="w-3 h-3" /> Add Option
+                                      <Plus className="w-3 h-3" /> {t("App.add_option")}
                                     </button>
                                   )}
                                 </div>
@@ -2443,7 +2536,7 @@ export default function App() {
                                       }
                                       className="text-[10px] font-bold text-yellow-500 hover:underline flex items-center gap-1"
                                     >
-                                      <Plus className="w-3 h-3" /> Add Option
+                                      <Plus className="w-3 h-3" /> {t("App.add_option")}
                                     </button>
                                   )}
                                 </div>
@@ -2458,7 +2551,7 @@ export default function App() {
                                     onClick={() => setAttachmentType("none")}
                                   />
                                   <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-500">
-                                    Attached: {attachmentType.replace("_", " ")}
+                                    {t("App.attached")}{attachmentType.replace("_", " ")}
                                   </span>
                                 </div>
                                 {attachmentType === "cv_item" &&
@@ -2470,7 +2563,7 @@ export default function App() {
                                       }
                                     >
                                       <option value="">
-                                        Select CV Entry...
+                                        {t("App.select_cv_entry")}
                                       </option>
                                       {profileData?.cv?.map((item: any) => (
                                         <option key={item.id} value={item.id}>
@@ -2490,14 +2583,14 @@ export default function App() {
                           <div className="flex items-center gap-2 mb-3">
                             <Sparkles className="w-3 h-3 text-blue-500" />
                             <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                              AI Content Assist
+                              {t("App.ai_content_assist")}
                             </span>
                           </div>
 
                           {aiOptimizedPost.quiz && (
                             <div className="mb-4">
                               <p className="text-[10px] font-bold text-neutral-500 uppercase mb-2">
-                                Suggested Quiz
+                                {t("App.suggested_quiz")}
                               </p>
                               <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
                                 <p className="text-xs font-bold mb-2">
@@ -2525,7 +2618,7 @@ export default function App() {
                                   }}
                                   className="mt-2 w-full py-1.5 bg-yellow-50 text-yellow-600 rounded-lg text-[9px] font-bold uppercase hover:bg-yellow-100"
                                 >
-                                  Use this Quiz
+                                  {t("App.use_quiz")}
                                 </button>
                               </div>
                             </div>
@@ -2534,7 +2627,7 @@ export default function App() {
                           {aiOptimizedPost.poll && (
                             <div>
                               <p className="text-[10px] font-bold text-neutral-500 uppercase mb-2">
-                                Suggested Poll
+                                {t("App.suggested_poll")}
                               </p>
                               <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm">
                                 <p className="text-xs font-bold mb-2">
@@ -2562,7 +2655,7 @@ export default function App() {
                                   }}
                                   className="mt-2 w-full py-1.5 bg-green-50 text-green-600 rounded-lg text-[9px] font-bold uppercase hover:bg-green-100"
                                 >
-                                  Use this Poll
+                                  {t("App.use_poll")}
                                 </button>
                               </div>
                             </div>
@@ -2572,36 +2665,55 @@ export default function App() {
                             onClick={() => setAiOptimizedPost(null)}
                             className="mt-4 text-[10px] text-blue-500 font-bold hover:underline"
                           >
-                            Clear AI suggestions
+                            {t("App.clear_ai_suggestions")}
                           </button>
                         </div>
                       )}
 
-                      <div className="space-y-4">
-                        {posts?.map((post) => (
-                          <PostCard
-                            key={post.id}
-                            post={post}
-                            currentUser={currentUser}
-                            onApply={applyToJob}
-                            onDelete={handleDeletePost}
-                            onEdit={(id, content) => {
-                              setEditingPostId(id);
-                              setEditingPostContent(content);
+                      <div
+                        style={{
+                          height: `${postVirtualizer.getTotalSize()}px`,
+                          width: "100%",
+                          position: "relative",
+                        }}
+                      >
+                        {postVirtualizer.getVirtualItems().map((virtualItem) => (
+                          <div
+                            key={virtualItem.key}
+                            data-index={virtualItem.index}
+                            ref={postVirtualizer.measureElement}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              transform: `translateY(${virtualItem.start}px)`,
                             }}
-                            isExpanded={expandedPost === post.id}
-                            onComment={(id) =>
-                              setExpandedPost(expandedPost === id ? null : id)
-                            }
-                            onRespond={handlePostResponse}
-                            onSelectUser={(id) => {
-                              setSelectedUserId(id);
-                              setActiveTab("profile");
-                              setIsRightOpen(true);
-                            }}
-                            isUnfolded={unfoldPostId === post.id}
-                            onUnfold={setUnfoldPostId}
-                          />
+                            className="pb-4"
+                          >
+                            <PostCard
+                              post={posts[virtualItem.index]}
+                              currentUser={currentUser}
+                              onApply={applyToJob}
+                              onDelete={handleDeletePost}
+                              onEdit={(id, content) => {
+                                setEditingPostId(id);
+                                setEditingPostContent(content);
+                              }}
+                              isExpanded={expandedPost === posts[virtualItem.index]?.id}
+                              onComment={(id) =>
+                                setExpandedPost(expandedPost === id ? null : id)
+                              }
+                              onRespond={handlePostResponse}
+                              onSelectUser={(id) => {
+                                setSelectedUserId(id);
+                                setActiveTab("profile");
+                                setIsRightOpen(true);
+                              }}
+                              isUnfolded={unfoldPostId === posts[virtualItem.index]?.id}
+                              onUnfold={setUnfoldPostId}
+                            />
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -3162,17 +3274,52 @@ export default function App() {
                                   className="w-full text-xs p-3 rounded-lg border border-neutral-200"
                                 />
                               </div>
-                              <textarea
-                                placeholder="Job Description & Requirements..."
-                                value={newJob.description}
-                                onChange={(e) =>
-                                  setNewJob({
-                                    ...newJob,
-                                    description: e.target.value,
-                                  })
-                                }
-                                className="w-full text-xs p-3 rounded-lg border border-neutral-200 min-h-[100px]"
-                              />
+                              <div className="relative">
+                                <textarea
+                                  placeholder="Job Description & Requirements..."
+                                  value={newJob.description}
+                                  onChange={(e) =>
+                                    setNewJob({
+                                      ...newJob,
+                                      description: e.target.value,
+                                    })
+                                  }
+                                  className="w-full text-xs p-3 rounded-lg border border-neutral-200 min-h-[150px] pr-10"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAiPrompt(!showAiPrompt)}
+                                  disabled={isAiLoading}
+                                  className={cn(
+                                    "absolute top-3 right-3 p-1.5 rounded-lg transition-all text-purple-600 hover:bg-purple-50",
+                                    showAiPrompt && "bg-purple-50 shadow-inner"
+                                  )}
+                                >
+                                  <Sparkles className={cn("w-4 h-4", isAiLoading && "animate-spin")} />
+                                </button>
+                              </div>
+
+                              {showAiPrompt && (
+                                <div className="p-1 bg-purple-50/50 rounded-xl flex items-center gap-2 border border-purple-100 animate-in fade-in slide-in-from-top-1">
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="Instruction for AI (e.g. 'add high-level technical requirements')..."
+                                    className="flex-1 bg-transparent border-none text-[11px] px-3 py-1.5 outline-none font-medium placeholder:text-purple-300 text-purple-900"
+                                    value={aiInstruction}
+                                    onChange={(e) => setAiInstruction(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleAiMagicJob(aiInstruction)}
+                                  />
+                                  <button
+                                    onClick={() => handleAiMagicJob(aiInstruction)}
+                                    disabled={isAiLoading}
+                                    className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-30 transition-all"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              )}
+
                               <Button
                                 onClick={postJob}
                                 className="w-full rounded-xl"
@@ -3191,192 +3338,230 @@ export default function App() {
                             No jobs match your criteria.
                           </div>
                         ) : (
-                          jobs?.map((job) => (
-                            <div
-                              key={job.id}
-                              className="bg-white border border-neutral-200 rounded-2xl p-5 hover:shadow-md transition-shadow"
-                            >
-                              <div className="flex justify-between items-start mb-4">
-                                <div>
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="font-bold text-lg">
-                                      {job.title}
-                                    </h3>
-                                    <span className="text-[9px] font-bold uppercase tracking-widest bg-black text-white px-1.5 py-0.5 rounded">
-                                      {job.experience_level}
-                                    </span>
-                                  </div>
-                                  <div className="flex flex-wrap gap-3 text-xs text-neutral-500 font-mono">
-                                    <span className="flex items-center gap-1 bg-neutral-100 px-2 py-1 rounded-md">
-                                      <Briefcase className="w-3 h-3" />{" "}
-                                      {job.company_name}
-                                    </span>
-                                    <span className="flex items-center gap-1 bg-neutral-100 px-2 py-1 rounded-md">
-                                      <MapPin className="w-3 h-3" />{" "}
-                                      {job.location}
-                                    </span>
-                                    {job.salary_range && (
-                                      <span className="flex items-center gap-1 bg-neutral-100 px-2 py-1 rounded-md">
-                                        <TrendingUp className="w-3 h-3 text-green-600" />{" "}
-                                        {job.salary_range}
-                                      </span>
-                                    )}
-                                    {job.end_date &&
-                                      isValid(new Date(job.end_date)) && (
-                                        <span className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded-md border border-red-100">
-                                          <Award className="w-3 h-3" /> Closes:{" "}
-                                          {new Date(
-                                            job.end_date,
-                                          ).toLocaleDateString()}
-                                        </span>
-                                      )}
-                                  </div>
-                                </div>
-                                <div className="flex flex-col items-end gap-2">
-                                  {currentUser?.id === job.user_id && (
-                                    <Button
-                                      onClick={() => fetchApplicants(job.id)}
-                                      variant="outline"
-                                      className="h-8 text-[10px] font-bold"
-                                    >
-                                      Applicants
-                                    </Button>
-                                  )}
-                                  {currentUser?.is_company_rep === 0 &&
-                                    (applyingToJobId === job.id ? (
-                                      <div className="bg-neutral-50 border border-neutral-100 p-3 rounded-xl shadow-inner animate-in fade-in slide-in-from-top-1 duration-300">
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
-                                          Attach Professional Insight
-                                        </p>
-                                        <div className="flex gap-2 mb-3">
-                                          <button
-                                            onClick={() =>
-                                              setAppAttachmentType(
-                                                appAttachmentType === "cv_item"
-                                                  ? "none"
-                                                  : "cv_item",
-                                              )
-                                            }
-                                            className={cn(
-                                              "p-2 rounded-lg border transition-all",
-                                              appAttachmentType === "cv_item"
-                                                ? "bg-black text-white border-black"
-                                                : "bg-white text-neutral-400 border-neutral-200",
-                                            )}
-                                            title="Attach CV Section"
-                                          >
-                                            <FileText className="w-4 h-4" />
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              setAppAttachmentType(
-                                                appAttachmentType ===
-                                                  "portfolio_item"
-                                                  ? "none"
-                                                  : "portfolio_item",
-                                              )
-                                            }
-                                            className={cn(
-                                              "p-2 rounded-lg border transition-all",
-                                              appAttachmentType ===
-                                                "portfolio_item"
-                                                ? "bg-black text-white border-black"
-                                                : "bg-white text-neutral-400 border-neutral-200",
-                                            )}
-                                            title="Attach Portfolio Item"
-                                          >
-                                            <Layers className="w-4 h-4" />
-                                          </button>
+                          <div
+                            style={{
+                              height: `${jobVirtualizer.getTotalSize()}px`,
+                              width: "100%",
+                              position: "relative",
+                            }}
+                          >
+                            {jobVirtualizer.getVirtualItems().map((virtualItem) => {
+                              const job = jobs[virtualItem.index];
+                              if (!job) return null;
+                              return (
+                                <div
+                                  key={virtualItem.key}
+                                  data-index={virtualItem.index}
+                                  ref={jobVirtualizer.measureElement}
+                                  style={{
+                                    position: "absolute",
+                                    top: 0,
+                                    left: 0,
+                                    width: "100%",
+                                    transform: `translateY(${virtualItem.start}px)`,
+                                  }}
+                                  className="pb-4"
+                                >
+                                  <div className="bg-white border border-neutral-200 rounded-2xl p-5 hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start mb-4">
+                                      <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <h3 className="font-bold text-lg">
+                                            {job.title}
+                                          </h3>
+                                          <span className="text-[9px] font-bold uppercase tracking-widest bg-black text-white px-1.5 py-0.5 rounded">
+                                            {job.experience_level}
+                                          </span>
                                         </div>
-
-                          {appAttachmentType === "cv_item" && (
-                            <select
-                              className="w-full text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-2 mb-3 outline-none"
-                              onChange={(e) =>
-                                setAppAttachmentId(e.target.value)
-                              }
-                            >
-                              <option value="">
-                                Select relevant experience...
-                              </option>
-                              {profileData?.cv?.map((item: any) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.title} at {item.subtitle}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
-                          {appAttachmentType === "portfolio_item" && (
-                            <select
-                              className="w-full text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-2 mb-3 outline-none"
-                              onChange={(e) =>
-                                setAppAttachmentId(e.target.value)
-                              }
-                            >
-                              <option value="">
-                                Select relevant project...
-                              </option>
-                              {profileData?.portfolio?.map((item: any) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.title}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
-                                        <div className="flex gap-2">
-                                          <Button
-                                            onClick={applyToJob}
-                                            className="flex-1 rounded-lg text-[10px] h-8 font-bold"
-                                          >
-                                            Confirm
-                                          </Button>
-                                          <Button
-                                            variant="ghost"
-                                            onClick={() =>
-                                              setApplyingToJobId(null)
-                                            }
-                                            className="rounded-lg text-[10px] h-8"
-                                          >
-                                            Cancel
-                                          </Button>
+                                        <div className="flex flex-wrap gap-3 text-xs text-neutral-500 font-mono">
+                                          <span className="flex items-center gap-1 bg-neutral-100 px-2 py-1 rounded-md">
+                                            <Briefcase className="w-3 h-3" />{" "}
+                                            {job.company_name}
+                                          </span>
+                                          <span className="flex items-center gap-1 bg-neutral-100 px-2 py-1 rounded-md">
+                                            <MapPin className="w-3 h-3" />{" "}
+                                            {job.location}
+                                          </span>
+                                          {job.salary_range && (
+                                            <span className="flex items-center gap-1 bg-neutral-100 px-2 py-1 rounded-md">
+                                              <TrendingUp className="w-3 h-3 text-green-600" />{" "}
+                                              {job.salary_range}
+                                            </span>
+                                          )}
+                                          {job.end_date &&
+                                            isValid(new Date(job.end_date)) && (
+                                              <span className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-1 rounded-md border border-red-100">
+                                                <Award className="w-3 h-3" /> Closes:{" "}
+                                                {new Date(
+                                                  job.end_date,
+                                                ).toLocaleDateString()}
+                                              </span>
+                                            )}
                                         </div>
                                       </div>
-                                    ) : (
-                                      <Button
-                                        onClick={() =>
-                                          setApplyingToJobId(job.id)
-                                        }
-                                        className="rounded-xl text-xs font-bold shrink-0"
-                                      >
-                                        Apply
-                                      </Button>
-                                    ))}
+                                      <div className="flex flex-col items-end gap-2">
+                                        {currentUser?.id === job.user_id && (
+                                          <Button
+                                            onClick={() => fetchApplicants(job.id)}
+                                            variant="outline"
+                                            className="h-8 text-[10px] font-bold"
+                                          >
+                                            Applicants
+                                          </Button>
+                                        )}
+                                        {currentUser?.is_company_rep === 0 &&
+                                          (applyingToJobId === job.id ? (
+                                            <div className="bg-neutral-50 border border-neutral-100 p-3 rounded-xl shadow-inner animate-in fade-in slide-in-from-top-1 duration-300">
+                                              <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-2">
+                                                Attach Professional Insight
+                                              </p>
+                                              <div className="flex gap-2 mb-3">
+                                                <button
+                                                  onClick={() =>
+                                                    setAppAttachmentType(
+                                                      appAttachmentType === "cv_item"
+                                                        ? "none"
+                                                        : "cv_item",
+                                                    )
+                                                  }
+                                                  className={cn(
+                                                    "p-2 rounded-lg border transition-all",
+                                                    appAttachmentType === "cv_item"
+                                                      ? "bg-black text-white border-black"
+                                                      : "bg-white text-neutral-400 border-neutral-200",
+                                                  )}
+                                                  title="Attach CV Section"
+                                                >
+                                                  <FileText className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  onClick={() =>
+                                                    setAppAttachmentType(
+                                                      appAttachmentType ===
+                                                        "portfolio_item"
+                                                        ? "none"
+                                                        : "portfolio_item",
+                                                    )
+                                                  }
+                                                  className={cn(
+                                                    "p-2 rounded-lg border transition-all",
+                                                    appAttachmentType ===
+                                                      "portfolio_item"
+                                                      ? "bg-black text-white border-black"
+                                                      : "bg-white text-neutral-400 border-neutral-200",
+                                                  )}
+                                                  title="Attach Portfolio Item"
+                                                >
+                                                  <Layers className="w-4 h-4" />
+                                                </button>
+                                              </div>
+
+                                              {appAttachmentType === "cv_item" && (
+                                                <select
+                                                  className="w-full text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-2 mb-3 outline-none"
+                                                  onChange={(e) =>
+                                                    setAppAttachmentId(e.target.value)
+                                                  }
+                                                >
+                                                  <option value="">
+                                                    Select relevant experience...
+                                                  </option>
+                                                  {profileData?.cv?.map((item: any) => (
+                                                    <option key={item.id} value={item.id}>
+                                                      {item.title} at {item.subtitle}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              )}
+
+                                              {appAttachmentType === "portfolio_item" && (
+                                                <select
+                                                  className="w-full text-[10px] bg-white border border-neutral-200 rounded-lg px-2 py-2 mb-3 outline-none"
+                                                  onChange={(e) =>
+                                                    setAppAttachmentId(e.target.value)
+                                                  }
+                                                >
+                                                  <option value="">
+                                                    Select relevant project...
+                                                  </option>
+                                                  {profileData?.portfolio?.map((item: any) => (
+                                                    <option key={item.id} value={item.id}>
+                                                      {item.title}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              )}
+
+                                              <div className="flex gap-2">
+                                                <Button
+                                                  onClick={applyToJob}
+                                                  className="flex-1 rounded-lg text-[10px] h-8 font-bold"
+                                                >
+                                                  Confirm
+                                                </Button>
+                                                <Button
+                                                  variant="ghost"
+                                                  onClick={() =>
+                                                    setApplyingToJobId(null)
+                                                  }
+                                                  className="rounded-lg text-[10px] h-8"
+                                                >
+                                                  Cancel
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <Button
+                                              onClick={() =>
+                                                setApplyingToJobId(job.id)
+                                              }
+                                              className="rounded-xl text-xs font-bold shrink-0"
+                                            >
+                                              Apply
+                                            </Button>
+                                          ))}
+                                      </div>
+                                    </div>
+                                    <div className="markdown-body text-sm text-neutral-700 mt-4 pt-4 border-t border-neutral-100 prose prose-sm max-w-none">
+                                      <Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{job.description}</Markdown>
+                                    </div>
+
+                                    {(job.skills?.length > 0 || job.topics?.length > 0) && (
+                                      <div className="mt-4 flex flex-wrap gap-2">
+                                        {job.skills?.map((s: string) => (
+                                          <span key={s} className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-[10px] font-bold border border-blue-100">
+                                            {s}
+                                          </span>
+                                        ))}
+                                        {job.topics?.map((t: string) => (
+                                          <span key={t} className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-[10px] font-bold border border-green-100 italic">
+                                            #{t}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <div className="mt-4 pt-4 border-t border-neutral-100 flex items-center justify-between text-[10px] text-neutral-400 font-mono">
+                                      {job.created_at &&
+                                      isValid(new Date(job.created_at)) ? (
+                                        <span>
+                                          Posted{" "}
+                                          {formatDistanceToNow(
+                                            new Date(job.created_at),
+                                          )}{" "}
+                                          ago
+                                        </span>
+                                      ) : (
+                                        <span>Recently posted</span>
+                                      )}
+                                      <span>
+                                        Job ID: {job.id.toString().padStart(6, "0")}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="markdown-body text-sm text-neutral-700 mt-4 pt-4 border-t border-neutral-100">
-                                <Markdown>{job.description}</Markdown>
-                              </div>
-                              <div className="mt-4 pt-4 border-t border-neutral-100 flex items-center justify-between text-[10px] text-neutral-400 font-mono">
-                                {job.created_at &&
-                                isValid(new Date(job.created_at)) ? (
-                                  <span>
-                                    Posted{" "}
-                                    {formatDistanceToNow(
-                                      new Date(job.created_at),
-                                    )}{" "}
-                                    ago
-                                  </span>
-                                ) : (
-                                  <span>Recently posted</span>
-                                )}
-                                <span>
-                                  Job ID: {job.id.toString().padStart(6, "0")}
-                                </span>
-                              </div>
-                            </div>
-                          ))
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     </div>
