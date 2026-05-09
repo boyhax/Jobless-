@@ -12,10 +12,57 @@ export interface IDBAdapter {
   relate(from: string, edge: string, to: string, data?: any): Promise<void>;
   search<T>(table: string, term: string, fields: string[]): Promise<T[]>;
   query<T>(sql: string, params?: any): Promise<T>;
+  migrate(): Promise<void>;
 }
 
 export class SurrealAdapter implements IDBAdapter {
   constructor(private db: Surreal) {}
+
+  async migrate(): Promise<void> {
+    const schemaQueries = [
+      'DEFINE TABLE users SCHEMALESS;',
+      'DEFINE INDEX userEmail ON users FIELDS email UNIQUE;',
+      'DEFINE TABLE places SCHEMALESS;',
+      'DEFINE INDEX placeName ON places FIELDS name UNIQUE;',
+      'DEFINE TABLE posts SCHEMALESS;',
+      'DEFINE TABLE jobs SCHEMALESS;',
+      'DEFINE TABLE cv_sections SCHEMALESS;',
+      'DEFINE TABLE comments SCHEMALESS;',
+      'DEFINE TABLE messages SCHEMALESS;',
+      'DEFINE TABLE notifications SCHEMALESS;',
+      'DEFINE TABLE topics SCHEMALESS;',
+      'DEFINE TABLE skills SCHEMALESS;',
+      'DEFINE TABLE connects_to TYPE RELATION FROM users TO users;',
+      'DEFINE TABLE follows_topic TYPE RELATION FROM users TO topics;',
+      'DEFINE TABLE applies_to TYPE RELATION FROM users TO jobs;',
+      'DEFINE TABLE tagged_with TYPE RELATION FROM posts TO topics;',
+      'DEFINE TABLE job_tagged_with TYPE RELATION FROM jobs TO topics;',
+      'DEFINE TABLE requires_skill TYPE RELATION FROM jobs TO skills;',
+      'DEFINE TABLE user_has_skill TYPE RELATION FROM users TO skills;',
+      'DEFINE TABLE user_skills SCHEMALESS;',
+      'DEFINE TABLE portfolio SCHEMALESS;',
+      'DEFINE TABLE files SCHEMALESS;',
+      'DEFINE TABLE job_alerts SCHEMALESS;',
+      'DEFINE TABLE conversations SCHEMALESS;',
+    ];
+
+    for (const q of schemaQueries) {
+      try {
+        await this.db.query(q);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg.includes('already exists')) continue;
+        
+        // IAM error or permissions: warn but don't fail migration if tables might already exist
+        if (msg.includes('IAM error') || msg.includes('permissions')) {
+          console.warn(`[SurrealAdapter] Permission warning during migration: ${msg}`);
+          continue;
+        }
+        
+        console.warn(`Schema query failed: ${q}`, msg);
+      }
+    }
+  }
 
   private toRecordId(id: string): RecordId {
     if (id.includes(':')) {

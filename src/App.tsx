@@ -109,6 +109,8 @@ const PostCard = ({
   onDelete?: (postId: string | number) => void;
   onEdit?: (postId: string | number, currentContent: string) => void;
 }) => {
+  if (!post) return null;
+
   const { t } = useTranslation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState("");
@@ -540,6 +542,15 @@ export default function App() {
   });
   const [posts, setPosts] = useState<Post[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const [selectedUserId, setSelectedUserId] = useState<string | number | null>(
     null,
   );
@@ -914,7 +925,7 @@ export default function App() {
   };
 
   const toggleTopicFollow = async (topic: string) => {
-    if (!currentUser) return;
+    if (!currentUser || typeof topic !== 'string') return;
     const tName = topic.startsWith("#") ? topic.slice(1) : topic;
     const isFollowed = followedTopics.includes(tName);
     const endpoint = isFollowed ? "/api/topics/unfollow" : "/api/topics/follow";
@@ -930,33 +941,31 @@ export default function App() {
     }
   };
 
-  const checkSetupStatus = async () => {
+  const initApp = async () => {
     try {
-      const data = await fetchAPI("/api/setup/status");
-      setIsSetupNeeded(!data.initialized);
-    } catch (err) {
-      console.error("Setup check failed", err);
+      const data = await fetchAPI("/api/app-init");
+      setIsSetupNeeded(!data.setup.initialized);
+      setPlaces(data.places);
+      if (data.user) {
+        setCurrentUser(data.user);
+        setFollowedTopics(data.followedTopics);
+        setNotifications(data.notifications);
+        setConversations(data.conversations);
+        if (!selectedUserId) setSelectedUserId(data.user.id);
+        if (data.user.place_id && (selectedPlaceId === "all" || !selectedPlaceId)) {
+          setSelectedPlaceId(data.user.place_id);
+        }
+      }
+    } catch (err: any) {
+      console.error("App initialization failed", err);
+      setError("Sync connectivity issues. Please refresh.");
     } finally {
       setSetupLoading(false);
     }
   };
 
   useEffect(() => {
-    checkSetupStatus();
-    checkSession();
-    fetchPlaces();
-    fetchTopics();
-    fetchRecommendations();
-    if (currentUser) {
-      fetchFollowedTopics();
-      if (!selectedUserId) setSelectedUserId(currentUser.id);
-      if (currentUser.place_id && selectedPlaceId === "all") {
-        setSelectedPlaceId(currentUser.place_id);
-      }
-      fetchFeed();
-      fetchConversations();
-      fetchNotifications();
-    }
+    initApp();
 
     // Listen for storage events to sync across tabs
     const handleStorage = (e: StorageEvent) => {
@@ -974,7 +983,7 @@ export default function App() {
 
   useEffect(() => {
     fetchFeed();
-  }, [searchQuery]);
+  }, [debouncedSearchQuery]);
 
   useEffect(() => {
     if (currentUser) {
@@ -989,7 +998,7 @@ export default function App() {
 
   useEffect(() => {
     fetchCandidates();
-  }, [searchQuery]);
+  }, [debouncedSearchQuery]);
 
   const fetchConversations = async () => {
     if (!currentUser) return;
@@ -1057,14 +1066,14 @@ export default function App() {
   }, [activeChatUser]);
 
   const fetchSearch = async () => {
-    if (!searchQuery && !searchType) {
+    if (!debouncedSearchQuery && !searchType) {
       fetchFeed();
       return;
     }
     setLoading(true);
     try {
       const data = await fetchAPI(
-        `/api/search?q=${searchQuery}&type=${searchType || "all"}`,
+        `/api/search?q=${debouncedSearchQuery}&type=${searchType || "all"}`,
       );
       setSearchResults(data);
       setPosts(data.posts || []);
@@ -1076,7 +1085,7 @@ export default function App() {
 
   useEffect(() => {
     fetchSearch();
-  }, [searchQuery, searchType]);
+  }, [debouncedSearchQuery, searchType]);
 
   const fetchFeed = async () => {
     setLoading(true);
@@ -1163,7 +1172,7 @@ export default function App() {
 
   const fetchCandidates = async () => {
     try {
-      const data = await fetchAPI(`/api/candidates?skills=${searchQuery}`);
+      const data = await fetchAPI(`/api/candidates?skills=${debouncedSearchQuery}`);
       setCandidates(data);
     } catch (err) {
       console.error(err);
@@ -1185,7 +1194,7 @@ export default function App() {
   const fetchJobs = async () => {
     try {
       const query = new URLSearchParams();
-      const searchTerm = searchType === "jobs" ? searchQuery : jobFilters.q;
+      const searchTerm = searchType === "jobs" ? debouncedSearchQuery : jobFilters.q;
       if (searchTerm) query.set("q", searchTerm);
       if (jobFilters.experience !== "all")
         query.set("experience", jobFilters.experience);
@@ -1205,7 +1214,7 @@ export default function App() {
     if (currentUser) {
       fetchJobs();
     }
-  }, [currentUser, jobFilters, searchQuery, searchType]);
+  }, [currentUser, jobFilters, debouncedSearchQuery, searchType]);
 
   const applyToJob = async () => {
     if (!currentUser || !applyingToJobId) return;
@@ -1674,7 +1683,7 @@ export default function App() {
   }
 
   if (isSetupNeeded) {
-    return <SetupPage onComplete={() => checkSetupStatus()} />;
+    return <SetupPage onComplete={() => initApp()} />;
   }
 
   return (
@@ -1789,6 +1798,7 @@ export default function App() {
                         </h3>
                         <div className="flex flex-wrap gap-2">
                           {topics.map((topic) => {
+                            if (typeof topic !== 'string') return null;
                             const tName = topic.startsWith('#') ? topic.slice(1) : topic;
                             const isFollowed = followedTopics.includes(tName);
                             
@@ -4108,9 +4118,11 @@ export default function App() {
                               </div>
                             ) : (
                               <div className="space-y-4">
-                                {notifications?.map((n) => (
-                                  <Card
-                                    key={n.id}
+                                {notifications?.map((n) => {
+                                  if (!n) return null;
+                                  return (
+                                    <Card
+                                      key={n.id || Math.random()}
                                     className={cn(
                                       "p-4 transition-all",
                                       !n.is_read
@@ -4126,7 +4138,7 @@ export default function App() {
                                             ? "bg-blue-50 text-blue-500"
                                             : n.type === "connection"
                                               ? "bg-purple-50 text-purple-500"
-                                              : n.type.startsWith("job_")
+                                              : (n.type && n.type.startsWith("job_"))
                                                 ? "bg-orange-50 text-orange-500"
                                                 : "bg-green-50 text-green-500",
                                         )}
@@ -4135,7 +4147,7 @@ export default function App() {
                                           <MessageSquare className="w-4 h-4" />
                                         ) : n.type === "connection" ? (
                                           <UserPlus className="w-4 h-4" />
-                                        ) : n.type.startsWith("job_") ? (
+                                        ) : (n.type && n.type.startsWith("job_")) ? (
                                           <Briefcase className="w-4 h-4" />
                                         ) : (
                                           <Award className="w-4 h-4" />
@@ -4167,8 +4179,9 @@ export default function App() {
                                         )}
                                       </div>
                                     </div>
-                                  </Card>
-                                ))}
+                                    </Card>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
