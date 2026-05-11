@@ -1,20 +1,52 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ProSync (Nitro v3 + Vite)
 
-# Run and deploy your AI Studio app
+This project now runs as one app using Nitro v3 for server/runtime and Vite for frontend build assets.
 
-This contains everything you need to run your app locally.
+Phase 1 API scope is intentionally minimal:
+- `GET /api/health` (Hono)
 
-View your app in AI Studio: https://ai.studio/apps/10ecb9e9-8765-4a81-b24f-38b2b995ccb1
+All previous Express endpoints are not part of this phase.
 
-## Run Locally
+## Local development
 
-**Prerequisites:**  Node.js
-
+Prerequisites:
+- Node.js 20+
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   - `npm install`
+2. Create local env file:
+   - PowerShell: `Copy-Item .env.example .env.local`
+3. Start app:
+   - `npm run dev`
+
+This command builds Vite assets, then starts Nitro dev server.
+
+## Scripts
+
+- `npm run dev` -> Vite build + Nitro dev
+- `npm run build:web` -> Vite build to `dist`
+- `npm run build` -> Vite build + Nitro build
+- `npm run preview` -> Nitro preview
+
+## API
+
+- Health endpoint: `/api/health`
+
+Response:
+
+```json
+{ "status": "ok" }
+```
+
+## Deploy to Vercel
+
+Nitro config uses preset `vercel` in `nitro.config.ts`.
+
+1. Import this repository in Vercel.
+2. Ensure build command is `npm run build`.
+3. Deploy.
+
+## Notes
+
+- Frontend routes still load from Vite build output served by Nitro.
+- Because this is Phase 1, frontend features requiring old API routes will not work until those routes are migrated.

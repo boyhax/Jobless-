@@ -1,18 +1,14 @@
-import express from 'express';
+import { Hono } from 'hono';
 import 'dotenv/config';
-import 'express-async-errors';
-import { createServer as createViteServer } from 'vite';
-import path from 'path';
 import { Surreal, RecordId } from 'surrealdb';
-import { SurrealAdapter, IDBAdapter } from '../src/lib/db';
-import { fileURLToPath } from 'url';
+import { IDBAdapter } from './lib/db/db';
+import { getAdapter, getRawDb, resetConnection } from './lib/db/dbFactory';
 import bcrypt from 'bcryptjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+// Module-level references updated each request via factory (cached by factory)
 let db: Surreal;
 let adapter: IDBAdapter;
+let setupDone = false;
 
 // Helper to safely parse record ID strings (e.g. "users:abc") into RecordId objects
 const toRecordId = (id: any, table?: string): RecordId | null => {
@@ -36,66 +32,189 @@ const stringId = (id: any): string => {
   return id.toString();
 };
 
-async function initSurreal() {
-  const url = process.env.SURREAL_URL || 'http://127.0.0.1:8000';
-  const ns = process.env.SURREAL_NS || 'test';
-  const database = process.env.SURREAL_DB || 'test';
-  const user = process.env.SURREAL_USER || 'root';
-  const pass = process.env.SURREAL_PASS || 'root';
+const expandOptionalPath = (path: string): string[] => {
+  const match = path.match(/^(.*)\/:([A-Za-z0-9_]+)\?$/);
+  if (!match) return [path];
+  const base = match[1] || '';
+  return [path.replace('?', ''), base || '/'];
+};
 
-  db = new Surreal();
+const getCompatReq = async (c: any) => {
+  if (c.__compatReq) return c.__compatReq;
 
-  try {
-    console.log(`Attempting to connect to SurrealDB at ${url}...`);
-    await db.connect(url);
-    await db.use({ namespace: ns, database });
-    adapter = new SurrealAdapter(db);
-    
-    // Sign in
-    if (user && pass) {
-      if (user === 'root' && pass === 'root') {
-        // Many local setups work without explicit signin if running in dev mode
-        // but we'll try anyway if provided
-      }
+  const url = new URL(c.req.url);
+  const query: Record<string, string> = {};
+  for (const [k, v] of url.searchParams.entries()) query[k] = v;
+
+  const headersRaw = Object.fromEntries(c.req.raw.headers.entries()) as Record<string, string>;
+  const headers = new Proxy(headersRaw, {
+    get(target, prop) {
+      return target[String(prop).toLowerCase()];
+    },
+  }) as Record<string, string | undefined>;
+
+  let body: any = undefined;
+  if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+    const ct = (headers['content-type'] || '').toLowerCase();
+    if (ct.includes('application/json')) {
       try {
-        await db.signin({ username: user, password: pass });
-      } catch (e) {
-        console.warn('SurrealDB signin skipped or failed (might be in guest mode or already authenticated):', (e as Error).message);
+        body = await c.req.json();
+      } catch {
+        body = undefined;
       }
     }
-    
-    console.log(`Successfully connected to SurrealDB at ${url} (NS: ${ns}, DB: ${database})`);
-    
-    // Initialize Schema/Tables
-    try {
-      await db.query(`
-        DEFINE TABLE users SCHEMALESS;
-        DEFINE INDEX userEmail ON users FIELDS email UNIQUE;
-        
-        DEFINE TABLE places SCHEMALESS;
-        DEFINE INDEX placeName ON places FIELDS name UNIQUE;
-        
-        DEFINE TABLE posts SCHEMALESS;
-        DEFINE TABLE jobs SCHEMALESS;
-        DEFINE TABLE cv_sections SCHEMALESS;
-        DEFINE TABLE comments SCHEMALESS;
-        DEFINE TABLE messages SCHEMALESS;
-        DEFINE TABLE notifications SCHEMALESS;
-        DEFINE TABLE job_applications SCHEMALESS;
-        DEFINE TABLE connections SCHEMALESS;
-        DEFINE TABLE user_skills SCHEMALESS;
-        DEFINE TABLE portfolio SCHEMALESS;
-        DEFINE TABLE files SCHEMALESS;
-        DEFINE TABLE job_alerts SCHEMALESS;
-      `);
-    } catch (schemaErr) {
-      console.warn('Schema definition skipped or failed (might already exist):', (schemaErr as Error).message);
-    }
+  }
 
-  } catch (err) {
-    console.error('Failed to connect to SurrealDB:', err);
-    // In dev, we continue so the server starts. In prod, we fail.
-    if (process.env.NODE_ENV === 'production') throw err;
+  c.__compatReq = {
+    params: c.req.param(),
+    query,
+    body,
+    headers,
+    method: c.req.method,
+    url: c.req.url,
+    // db and adapter are injected by the DB middleware below
+    db: undefined as Surreal | undefined,
+    adapter: undefined as IDBAdapter | undefined,
+  };
+
+  return c.__compatReq;
+};
+
+const createCompatRes = (c: any) => {
+  let statusCode = 200;
+  const res: any = {
+    __response: undefined as Response | undefined,
+    status(code: number) {
+      statusCode = code;
+      return res;
+    },
+    json(payload: unknown) {
+      const response = c.json(payload as any, statusCode as any);
+      res.__response = response;
+      return response;
+    },
+    send(payload: unknown) {
+      const response =
+        typeof payload === 'string'
+          ? c.text(payload, statusCode as any)
+          : c.json(payload as any, statusCode as any);
+      res.__response = response;
+      return response;
+    },
+  };
+  return res;
+};
+
+type CompatHandler = (req: any, res: any, next: () => Promise<unknown>) => unknown;
+
+const toHonoHandlers = (handlers: CompatHandler[], isMiddleware = false) => {
+  return async (c: any, next: any) => {
+    const req = await getCompatReq(c);
+    const res = createCompatRes(c);
+    let forwarded = false;
+
+    const forward = async () => {
+      if (forwarded) return;
+      forwarded = true;
+      return next();
+    };
+
+    const dispatch = async (index: number): Promise<unknown> => {
+      const handler = handlers[index];
+      if (!handler) {
+        if (isMiddleware) return forward();
+        return undefined;
+      }
+
+      const out = await handler(req, res, async () => dispatch(index + 1));
+      if (res.__response) return res.__response;
+      if (out instanceof Response) return out;
+      return out;
+    };
+
+    const maybe = await dispatch(0);
+    if (res.__response) return res.__response;
+    if (maybe instanceof Response) return maybe;
+    if (isMiddleware && !forwarded) return forward();
+    return c.json({ error: 'No response generated' }, 500);
+  };
+};
+
+class CompatRouter {
+  public hono = new Hono();
+
+  use(handler: CompatHandler): void;
+  use(handler: (err: any, req: any, res: any, next: () => Promise<unknown>) => unknown): void;
+
+  use(handler: CompatHandler | ((err: any, req: any, res: any, next: () => Promise<unknown>) => unknown)) {
+    if (typeof handler !== 'function') return;
+    if (handler.length === 4) return;
+    this.hono.use('*', toHonoHandlers([handler as CompatHandler], true));
+  }
+
+  get(path: string, ...handlers: CompatHandler[]) {
+    for (const p of expandOptionalPath(path)) this.hono.get(p, toHonoHandlers(handlers));
+  }
+
+  post(path: string, ...handlers: CompatHandler[]) {
+    for (const p of expandOptionalPath(path)) this.hono.post(p, toHonoHandlers(handlers));
+  }
+
+  put(path: string, ...handlers: CompatHandler[]) {
+    for (const p of expandOptionalPath(path)) this.hono.put(p, toHonoHandlers(handlers));
+  }
+
+  delete(path: string, ...handlers: CompatHandler[]) {
+    for (const p of expandOptionalPath(path)) this.hono.delete(p, toHonoHandlers(handlers));
+  }
+
+  all(path: string, ...handlers: CompatHandler[]) {
+    for (const p of expandOptionalPath(path)) this.hono.all(p, toHonoHandlers(handlers));
+  }
+
+  notFound(handler: any) {
+    this.hono.notFound(async (c: any) => {
+      const req = await getCompatReq(c);
+      const res = createCompatRes(c);
+      await handler(req, res);
+      return res.__response || c.json({ error: 'Not Found' }, 404);
+    });
+  }
+
+  onError(handler: any) {
+    this.hono.onError(async (err: any, c: any) => {
+      const req = await getCompatReq(c);
+      const res = createCompatRes(c);
+      await handler(err, req, res, () => {});
+      return res.__response || c.json({ error: err?.message || 'Server Error' }, err?.status || 500);
+    });
+  }
+}
+
+async function initSchema() {
+  try {
+    await db.query(`
+      DEFINE TABLE IF NOT EXISTS users SCHEMALESS;
+      DEFINE INDEX IF NOT EXISTS userEmail ON users FIELDS email UNIQUE;
+      DEFINE TABLE IF NOT EXISTS places SCHEMALESS;
+      DEFINE INDEX IF NOT EXISTS placeName ON places FIELDS name UNIQUE;
+      DEFINE TABLE IF NOT EXISTS posts SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS jobs SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS cv_sections SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS comments SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS messages SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS notifications SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS job_applications SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS connections SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS user_skills SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS portfolio SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS files SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS job_alerts SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS otps SCHEMALESS;
+      DEFINE TABLE IF NOT EXISTS post_responses SCHEMALESS;
+    `);
+  } catch (e) {
+    console.warn('Schema init skipped (may already exist):', (e as Error).message);
   }
 }
 
@@ -147,7 +266,7 @@ async function setupDatabase() {
 }
 
 // Midleware for RBAC
-const isAdmin = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+const isAdmin = async (req: any, res: any, next: any) => {
   const userId = req.headers['x-user-id'] as string;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   
@@ -277,34 +396,39 @@ const isAdmin = async (req: express.Request, res: express.Response, next: expres
     console.log('Database seeding completed.');
   };
 
-const app = express();
-const PORT = 3000;
-
-app.use(express.json());
+const app = new Hono();
 
 // --- REQUEST LOGGING ---
-app.use((req, res, next) => {
-  if (req.url.startsWith('/api')) {
-    console.log(`[API REQUEST] ${new Date().toISOString()} - ${req.method} ${req.url}`);
-  }
-  next();
+app.use('/api/*', async (c, next) => {
+  console.log(`[API REQUEST] ${new Date().toISOString()} - ${c.req.method} ${new URL(c.req.url).pathname}`);
+  await next();
 });
 
-const apiRouter = express.Router();
+const apiRouter = new CompatRouter();
 
 // Health
 apiRouter.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-// Middleware to ensure DB is connected
+// Middleware: resolve db + adapter from factory (cached), inject into req context
 apiRouter.use(async (req, res, next) => {
-  if (!db) {
-     try {
-       await initSurreal();
-     } catch (e) {
-       return res.status(503).json({ error: 'Database connection failed' });
-     }
+  try {
+    adapter = await getAdapter();
+    db = await getRawDb();
+    // Expose on req so route handlers can use req.db / req.adapter
+    req.db = db;
+    req.adapter = adapter;
+    // Run schema + seed once after first successful connection
+    if (!setupDone) {
+      await initSchema();
+      await setupDatabase();
+      setupDone = true;
+    }
+  } catch (e) {
+    resetConnection();
+    console.error('DB connection failed:', e);
+    return res.status(503).json({ error: 'Database connection unavailable' });
   }
-  next();
+  await next();
 });
 
 // Setup & Migration
@@ -914,13 +1038,7 @@ apiRouter.use(async (req, res, next) => {
   // Posts Feed
   apiRouter.get('/content', async (req, res) => {
     const { type, userId, keyword } = req.query;
-    let query = `
-      SELECT *, 
-      user_id.* as user,
-      (SELECT count() FROM comments WHERE post_id = $parent.id GROUP ALL)[0].count as comment_count,
-      (SELECT count(), response_index FROM post_responses WHERE post_id = $parent.id GROUP BY response_index) as stats
-      FROM posts
-    `;
+    let query = 'SELECT * FROM posts';
     const params: any = {};
     const conditions: string[] = [];
     
@@ -935,24 +1053,39 @@ apiRouter.use(async (req, res, next) => {
     query += ' ORDER BY created_at DESC';
     
     try {
-      const resultsFromDB = await adapter.query<any[]>(query, params);
-      const posts = (resultsFromDB as any)?.[0] || [];
-      const results = (posts || []).map((p: any) => {
-        const { id: postId, user_id: postUserId, user: postUser, stats: postStats, ...restPost } = p;
-        
-        // Format stats back to string if needed by frontend (or we can update frontend)
-        // Current frontend expects "0:5,1:10"
+      const [rows] = await db.query(query, params) as any;
+      const posts = rows || [];
+
+      const results = await Promise.all((posts as any[]).map(async (p: any) => {
+        const postId = stringId(p.id);
+        const postUserId = stringId(p.user_id);
+        const postRecordId = postId.includes(':') ? postId : `posts:${postId}`;
+
+        const [users] = await db.query('SELECT * FROM type::record($id)', { id: postUserId }) as any;
+        const postUser = users?.[0];
+
+        const [commentCounts] = await db.query(
+          'SELECT count() as count FROM comments WHERE post_id = type::record($postId) GROUP ALL',
+          { postId: postRecordId },
+        ) as any;
+        const commentCount = commentCounts?.[0]?.count || 0;
+
+        const [postStats] = await db.query(
+          'SELECT count() as count, response_index FROM post_responses WHERE post_id = type::record($postId) GROUP BY response_index',
+          { postId: postRecordId },
+        ) as any;
         const formattedStats = (postStats || []).map((s: any) => `${s.response_index}:${s.count}`).join(',');
 
-        return { 
-          ...restPost,
-          id: stringId(postId),
-          user_id: stringId(postUserId),
+        return {
+          ...p,
+          id: postId,
+          user_id: postUserId,
           user: postUser ? { ...postUser, id: stringId(postUser.id) } : undefined,
-          comment_count: p.comment_count || 0,
-          response_stats: formattedStats
+          comment_count: commentCount,
+          response_stats: formattedStats,
         };
-      });
+      }));
+
       res.json(results);
     } catch (err) {
       console.error('Content fetch error:', err);
@@ -1166,7 +1299,7 @@ apiRouter.use(async (req, res, next) => {
   });
 
   apiRouter.get('/recommendations/:userId?', async (req, res) => {
-    const { userId } = req.params;
+    const userId = (req.params as Record<string, string | undefined>).userId;
     try {
       const idRecord = userId && userId !== 'undefined' ? (userId.includes(':') ? userId : `users:${userId}`) : null;
       let query = 'SELECT id, full_name, headline, avatar_url, role FROM users WHERE role != "admin"';
@@ -1315,44 +1448,20 @@ apiRouter.use(async (req, res, next) => {
     }
   });
 
-  app.use('/api', apiRouter);
+  app.route('/api', apiRouter.hono);
 
   // API 404 & Error Handling
-  apiRouter.use((req, res) => {
+  apiRouter.notFound((req: any, res: any) => {
     res.status(404).json({ error: `Not Found: ${req.method} ${req.url}` });
   });
 
-  apiRouter.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  apiRouter.onError((err: any, req: any, res: any, next: any) => {
     console.error('API Error:', err);
     res.status(err.status || 500).json({ error: err.message || 'Server Error' });
   });
 
-  app.all('/api/*', (req, res) => {
-    res.status(404).json({ error: `Not Found: ${req.method} ${req.url}` });
+  app.all('/api/*', (c) => {
+    return c.json({ error: `Not Found: ${c.req.method} ${new URL(c.req.url).pathname}` }, 404);
   });
-
-  // Vite / Static Serving
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
-    app.use(vite.middlewares);
-  } else if (!process.env.VERCEL) {
-    // Only serve static files via Express if we're in production but NOT on Vercel
-    // (Vercel handles static files and rewrites natively via vercel.json)
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
-  }
-
-  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', async () => {
-      console.log(`Server on port ${PORT}`);
-      try {
-        await initSurreal();
-        await setupDatabase();
-      } catch (dbErr) {
-        console.error('Database initialization/setup failed:', dbErr);
-      }
-    });
-  }
 
   export default app;
