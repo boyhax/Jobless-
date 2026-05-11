@@ -1,5 +1,6 @@
 {
 <<<<<<< HEAD
+<<<<<<< HEAD
   "version": 2,
   "rewrites": [
     {
@@ -8,9 +9,14 @@
     }
   ]
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
   "framework": null,
   "installCommand": "bun install",
   "buildCommand": "bun run build",
   "bunVersion": "1.x"
+<<<<<<< HEAD
 >>>>>>> d322979 (feat: Implement SurrealDB adapter and connection management)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
 }

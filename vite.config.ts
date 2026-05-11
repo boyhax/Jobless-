@@ -1,16 +1,22 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 import { spawn } from 'child_process';
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import path from "path";
 import { defineConfig, loadEnv } from "vite";
+<<<<<<< HEAD
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
@@ -20,6 +26,7 @@ export default defineConfig(({ mode }) => {
         babel: {
           plugins: [["babel-plugin-react-compiler", { target: "18" }]],
         },
+<<<<<<< HEAD
 <<<<<<< HEAD
       }), 
       tailwindcss(),
@@ -57,12 +64,21 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       nitro(),
     ],
+=======
+      }),
+      tailwindcss(),
+      nitro(),
+    ],
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
     
     // resolve: {
     //   alias: {
     //     "@": path.resolve(__dirname, "."),
     //   },
     // },
+<<<<<<< HEAD
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
   };
 });

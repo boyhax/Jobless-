@@ -1,10 +1,14 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion, AnimatePresence } from "motion/react";
 =======
 import { formatDistanceToNow, isValid } from "date-fns";
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+import { formatDistanceToNow, isValid } from "date-fns";
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
 import {
   ArrowRight,
   Award,
@@ -63,6 +67,7 @@ import type {
   User
 } from "./types";
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { geminiService } from "./services/geminiService";
 import { formatDistanceToNow, isValid } from "date-fns";
 import Markdown from "react-markdown";
@@ -71,11 +76,14 @@ import remarkBreaks from "remark-breaks";
 import { useTranslation } from "react-i18next";
 =======
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
 
 const normalizeUserId = (id: string | number) => {
   const raw = String(id || "").trim();
   if (!raw) return "";
   return raw.includes(":") ? raw : `users:${raw}`;
+<<<<<<< HEAD
 };
 
 <<<<<<< HEAD
@@ -511,6 +519,8 @@ const PostCard = ({
       </div>
     </Card>
   );
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
 };
 
 =======
@@ -880,11 +890,15 @@ export default function App() {
   const fetchTopics = async () => {
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
       const url = currentUser ? `/api/topics?userId=${currentUser.id}` : "/api/topics";
       const data = await fetchAPI(url);
 =======
       const data = await api.topics.list();
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+      const data = await api.topics.list();
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       setTopics(data);
     } catch (err) {
       console.error(err);
@@ -895,9 +909,12 @@ export default function App() {
     if (!currentUser) return;
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
       const data = await fetchAPI(`/api/topics/followed/${currentUser.id}`);
       if (data) setFollowedTopics(data);
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       const data = await api.setup.status();
       setIsSetupNeeded(!data.initialized);
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
@@ -1048,12 +1065,16 @@ export default function App() {
     setLoading(true);
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
       const data = await fetchAPI(
         `/api/search?q=${debouncedSearchQuery}&type=${searchType || "all"}`,
       );
 =======
       const data = await api.search.all(searchQuery, searchType || 'all');
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+      const data = await api.search.all(searchQuery, searchType || 'all');
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       setSearchResults(data);
       setPosts(data.posts || []);
       setJobs(data.jobs || []);
@@ -1146,10 +1167,14 @@ export default function App() {
   const fetchCandidates = async () => {
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
       const data = await fetchAPI(`/api/candidates?skills=${debouncedSearchQuery}`);
 =======
       const data = await api.candidates.list(searchQuery);
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+      const data = await api.candidates.list(searchQuery);
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       setCandidates(data);
     } catch (err) {
       console.error(err);
@@ -1168,6 +1193,7 @@ export default function App() {
   const fetchJobs = async () => {
     try {
 <<<<<<< HEAD
+<<<<<<< HEAD
       const query = new URLSearchParams();
       const searchTerm = searchType === "jobs" ? debouncedSearchQuery : jobFilters.q;
       if (searchTerm) query.set("q", searchTerm);
@@ -1179,13 +1205,18 @@ export default function App() {
 
       const data = await fetchAPI(`/api/jobs?${query.toString()}`);
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       const data = await api.jobs.list({
         q: searchType === 'jobs' ? searchQuery : jobFilters.q,
         experience: jobFilters.experience,
         minSalary: jobFilters.minSalary,
         placeId: selectedPlaceId !== 'all' ? selectedPlaceId.toString() : undefined,
       });
+<<<<<<< HEAD
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       setJobs(data);
     } catch (err) {
       console.error(err);
@@ -1380,6 +1411,7 @@ export default function App() {
   };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   const handleAiMagicJob = async (instruction?: string) => {
     setIsAiLoading(true);
     try {
@@ -1399,13 +1431,18 @@ export default function App() {
     } finally {
       setIsAiLoading(false);
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
   const handleAiBio = async (instruction: string) => {
     if (!currentUser) return;
     const newBio = await geminiService.magicBio(profileData?.bio || "", instruction);
     if (newBio) {
       await api.profile.update(currentUser.id, { bio: newBio });
       fetchProfile(currentUser.id);
+<<<<<<< HEAD
 >>>>>>> 3bb641c (feat: add AI bio editing feature and update deployment configuration)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
     }
   };
 
@@ -1929,6 +1966,7 @@ export default function App() {
                             (u: any) => u.is_company_rep,
                           ) && (
 <<<<<<< HEAD
+<<<<<<< HEAD
                             <section>
                               <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">
                                 {t("App.organizations") || "Organizations"}
@@ -1948,6 +1986,8 @@ export default function App() {
                                     >
                                       <div className="relative">
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
                               <section>
                                 <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">
                                   {t("App.organizations") || "Organizations"}
@@ -2007,12 +2047,16 @@ export default function App() {
                                         }}
                                         className="flex-shrink-0 w-32 flex flex-col items-center text-center group"
                                       >
+<<<<<<< HEAD
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
                                         <Avatar
                                           src={u.avatar_url}
                                           name={u.full_name}
                                           size="md"
                                         />
+<<<<<<< HEAD
 <<<<<<< HEAD
                                         <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-full border border-white">
                                           <Briefcase className="w-2 h-2" />
@@ -2067,6 +2111,8 @@ export default function App() {
                             </section>
                           )}
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
                                         <p className="text-[10px] font-bold mt-2 truncate w-full">
                                           {u.full_name}
                                         </p>
@@ -2078,7 +2124,10 @@ export default function App() {
                                 </div>
                               </section>
                             )}
+<<<<<<< HEAD
 >>>>>>> 1abeaa1 (Refactor API interactions and enhance error handling)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
                         </div>
                       )}
 
@@ -2695,6 +2744,7 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
+<<<<<<< HEAD
 <<<<<<< HEAD
                     <div className="space-y-6">
                       {/* Job Alerts UI */}
@@ -3415,6 +3465,8 @@ export default function App() {
                       </div>
                     </div>
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
                     <JobsFeature
                       view={activeMainTab === "applicants" ? "applicants" : "jobs"}
                       onViewChange={setActiveMainTab}
@@ -3463,7 +3515,10 @@ export default function App() {
                       profileData={profileData}
                       onApplyToJob={applyToJob}
                     />
+<<<<<<< HEAD
 >>>>>>> 660d252 (Update localization files for Arabic, English, and Spanish)
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
                   )}
                 </div>
               </main>

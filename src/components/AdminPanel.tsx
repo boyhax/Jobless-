@@ -11,8 +11,11 @@ interface AdminPanelProps {
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
 <<<<<<< HEAD
+<<<<<<< HEAD
   const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'data' | 'system'>('analytics');
 =======
+=======
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
   const ability = useMemo(() => defineAbilityFor(currentUser), [currentUser]);
   const [activeTab, setActiveTab] = useState<'analytics' | 'users' | 'system'>('analytics');
 >>>>>>> 51adbfa (feat: add JobsFeature component for job and applicant management)
@@ -28,6 +31,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
     if (!ability.can('view', 'AdminPanel')) return;
     fetchAnalytics();
     fetchUsers();
+<<<<<<< HEAD
 <<<<<<< HEAD
     if (activeTab === 'data') {
       fetchAdminContent();
@@ -97,6 +101,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser }) => {
   const fetchAnalytics = async () => {
     if (!ability.can('read', 'Analytics')) return;
     try {
+=======
+  }, [ability]);
+
+  const fetchAnalytics = async () => {
+    if (!ability.can('read', 'Analytics')) return;
+    try {
+>>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
       const data = await api.system.analytics();
       setAnalytics(data);
     } catch (e) {
