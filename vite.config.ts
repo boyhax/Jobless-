@@ -1,19 +1,26 @@
+<<<<<<< HEAD
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 import { spawn } from 'child_process';
+=======
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { nitro } from "nitro/vite";
+import path from "path";
+import { defineConfig, loadEnv } from "vite";
+>>>>>>> nitro
 
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, ".", "");
   return {
     plugins: [
       react({
         babel: {
-          plugins: [
-            ["babel-plugin-react-compiler", { target: "18" }],
-          ],
+          plugins: [["babel-plugin-react-compiler", { target: "18" }]],
         },
+<<<<<<< HEAD
       }), 
       tailwindcss(),
       {
@@ -45,5 +52,17 @@ export default defineConfig(({mode}) => {
       },
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+=======
+      }),
+      tailwindcss(),
+      nitro(),
+    ],
+    
+    // resolve: {
+    //   alias: {
+    //     "@": path.resolve(__dirname, "."),
+    //   },
+    // },
+>>>>>>> nitro
   };
 });

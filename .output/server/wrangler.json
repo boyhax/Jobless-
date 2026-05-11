@@ -1,0 +1,42 @@
+{
+  "compatibility_date": "2025-09-02",
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "prosync",
+  "routes": [
+    {
+      "pattern": "prosync.tarmez.org",
+      "custom_domain": true
+    },
+    {
+      "pattern": "prosync.omanapps.com",
+      "custom_domain": true
+    }
+  ],
+  "main": "index.mjs",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "..\\public",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "!/api/docs/*"
+    ],
+    "binding": "ASSETS"
+  },
+  "no_bundle": true,
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": [
+        "**/*.mjs",
+        "**/*.js"
+      ]
+    }
+  ]
+}

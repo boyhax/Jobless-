@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Shield, Database, ArrowRight, CheckCircle2, Lock, Mail, User } from 'lucide-react';
-import { fetchAPI } from '../lib/utils';
+import * as api from '../services/api';
 import { motion } from 'motion/react';
 
 interface SetupPageProps {
@@ -24,10 +24,7 @@ export const SetupPage: React.FC<SetupPageProps> = ({ onComplete }) => {
     setError(null);
 
     try {
-      await fetchAPI('/api/setup/init', {
-        method: 'POST',
-        body: JSON.stringify(formData)
-      });
+      await api.setup.init(formData);
       setSuccess(true);
       setTimeout(() => onComplete(), 2000);
     } catch (err: any) {

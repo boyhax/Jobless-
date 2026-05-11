@@ -1,0 +1,81 @@
+### Test API Endpoints - ProSync
+
+@baseUrl = http://localhost:3000/api
+@adminUserId = users:admin_root
+@testUserId = users:ahmed
+@viewerId = users:admin_root
+
+### 1. Job Alerts - Get alerts for a user
+GET {{baseUrl}}/job-alerts/{{adminUserId}}
+Content-Type: application/json
+
+###
+# Test with missing userId (should return 400)
+GET {{baseUrl}}/job-alerts/
+Content-Type: application/json
+
+### 2. Job Alerts - Create an alert
+POST {{baseUrl}}/job-alerts
+Content-Type: application/json
+
+{
+  "user_id": "{{adminUserId}}",
+  "keywords": ["cloud", "architecture"],
+  "location": "muscat",
+  "experience_level": "senior"
+}
+
+### 3. Messages - Get conversations for user
+GET {{baseUrl}}/messages/conversations/{{adminUserId}}
+Content-Type: application/json
+
+###
+# Test with different user ID format (without prefix)
+GET {{baseUrl}}/messages/conversations/admin_root
+Content-Type: application/json
+
+### 4. Messages - Get conversation between two users
+GET {{baseUrl}}/messages/{{adminUserId}}/{{testUserId}}
+Content-Type: application/json
+
+### 5. Messages - Send a message
+POST {{baseUrl}}/messages
+Content-Type: application/json
+
+{
+  "sender_id": "{{adminUserId}}",
+  "receiver_id": "{{testUserId}}",
+  "content": "Hello, this is a test message"
+}
+
+### 6. Profile - Get user profile with viewer
+GET {{baseUrl}}/profile/{{testUserId}}?viewerId={{viewerId}}
+Content-Type: application/json
+
+###
+# Test profile with missing userId (should return 400)
+GET {{baseUrl}}/profile/?viewerId={{viewerId}}
+Content-Type: application/json
+
+### 7. Profile - Get user profile without viewer
+GET {{baseUrl}}/profile/{{testUserId}}
+Content-Type: application/json
+
+### 8. Profile - Update user profile
+PUT {{baseUrl}}/profile
+Content-Type: application/json
+
+{
+  "user_id": "{{adminUserId}}",
+  "headline": "System Administrator",
+  "bio": "Managing ProSync platform"
+}
+
+### 9. Health Check
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+### 10. Admin Users List (requires admin auth)
+GET {{baseUrl}}/admin/users
+X-User-Id: {{adminUserId}}
+Content-Type: application/json

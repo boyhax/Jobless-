@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "version": 2,
   "rewrites": [
     {
@@ -6,4 +7,10 @@
       "destination": "/server.ts"
     }
   ]
+=======
+  "framework": null,
+  "installCommand": "bun install",
+  "buildCommand": "bun run build",
+  "bunVersion": "1.x"
+>>>>>>> nitro
 }

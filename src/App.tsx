@@ -1,74 +1,68 @@
+<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion, AnimatePresence } from "motion/react";
+=======
+import { formatDistanceToNow, isValid } from "date-fns";
+>>>>>>> nitro
 import {
-  Routes,
-  Route,
-  useNavigate,
-  useLocation,
-  Navigate,
-} from "react-router-dom";
-import {
-  Briefcase,
-  GraduationCap,
-  Code,
+  ArrowRight,
   Award,
-  Search,
-  User as UserIcon,
-  Home,
+  Bell,
+  Briefcase,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  Hash,
+  Link as LinkIcon,
+  Menu,
   MessageSquare,
   Plus,
-  X,
-  Link as LinkIcon,
-  ExternalLink,
-  ChevronRight,
-  Send,
-  MoreHorizontal,
-  Filter,
-  CheckCircle2,
-  FileText,
-  Image as ImageIcon,
-  Bell,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Trophy,
+  User as UserIcon,
   UserPlus,
   Users,
-  AtSign,
-  Hash,
-  MapPin,
-  TrendingUp,
-  Layers,
-  Menu,
-  Globe,
-  Sparkles,
   Vote,
-  Trophy,
-  Paperclip,
-  Trash2,
-  FolderOpen,
-  ShieldCheck,
-  ShieldAlert,
-  Settings,
-  Mail,
-  Lock,
-  Newspaper,
   Wand2,
-  ArrowRight,
+  X
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { AdminPanel } from "./components/AdminPanel";
+import {
+  AuthPanel,
+  EditPostModal,
+  FileGallery,
+  JobsFeature,
+  MarkdownEditor,
+  PostCard,
+} from "./components/features";
 import { ProfilePanel } from "./components/ProfilePanel";
 import { SetupPage } from "./components/SetupPage";
+import { Avatar } from "./components/ui/Avatar";
 import { Button } from "./components/ui/Button";
 import { Card } from "./components/ui/Card";
-import { Avatar } from "./components/ui/Avatar";
-import { cn, fetchAPI } from "./lib/utils";
-import {
-  User,
-  Post,
-  CVSection,
-  Skill,
-  PortfolioItem,
-  Comment,
+import { cn } from "./lib/utils";
+import { geminiService } from "./services/aiClient";
+import * as api from "./services/api";
+import type {
   FileItem,
+  Post,
+  User
 } from "./types";
+<<<<<<< HEAD
 import { geminiService } from "./services/geminiService";
 import { formatDistanceToNow, isValid } from "date-fns";
 import Markdown from "react-markdown";
@@ -523,6 +517,13 @@ const PostCard = ({
       </div>
     </Card>
   );
+=======
+
+const normalizeUserId = (id: string | number) => {
+  const raw = String(id || "").trim();
+  if (!raw) return "";
+  return raw.includes(":") ? raw : `users:${raw}`;
+>>>>>>> nitro
 };
 
 export default function App() {
@@ -555,6 +556,7 @@ export default function App() {
     null,
   );
   const [profileData, setProfileData] = useState<any>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
@@ -638,7 +640,6 @@ export default function App() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
   useEffect(() => {
     const handleUnauthorized = () => {
       logout();
@@ -719,10 +720,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetchAPI("/api/auth/check-email", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      });
+      const res = await api.auth.checkEmail(email);
       if (res.exists) {
         setAuthStep("password");
       } else {
@@ -739,10 +737,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const user = await fetchAPI("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
+      const user = await api.auth.login(email, password);
       completeLogin(user);
     } catch (err: any) {
       handleFetchError(err);
@@ -756,10 +751,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const user = await fetchAPI("/api/auth/register", {
-        method: "POST",
-        body: JSON.stringify({ email, password, full_name: fullName }),
-      });
+      const user = await api.auth.register(email, password, fullName);
       completeLogin(user);
     } catch (err: any) {
       setError(err.message || "Registration failed");
@@ -772,10 +764,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetchAPI("/api/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      });
+      const res = await api.auth.forgotPassword(email);
       setDebugOtp(res.debug_otp); // For demo
       setAuthStep("verify");
     } catch (err: any) {
@@ -789,10 +778,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      await fetchAPI("/api/auth/verify-otp", {
-        method: "POST",
-        body: JSON.stringify({ email, otp }),
-      });
+      await api.auth.verifyOtp(email, otp);
       setAuthStep("new_pass");
     } catch (err: any) {
       setError(err.message || "Invalid OTP");
@@ -805,10 +791,7 @@ export default function App() {
     setIsLoading(true);
     setError(null);
     try {
-      await fetchAPI("/api/auth/reset-password", {
-        method: "POST",
-        body: JSON.stringify({ email, otp, newPassword }),
-      });
+      await api.auth.resetPassword(email, otp, newPassword);
       setAuthStep("password");
       setPassword("");
       alert("Password reset successfully. Please login.");
@@ -859,7 +842,7 @@ export default function App() {
   };
   const fetchPlaces = async () => {
     try {
-      const data = await fetchAPI("/api/places");
+      const data = await api.places.list();
       setPlaces(data);
     } catch (e) {
       console.error(e);
@@ -868,10 +851,7 @@ export default function App() {
 
   const login = async (loginEmail: string) => {
     try {
-      const user = await fetchAPI("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email: loginEmail }),
-      });
+      const user = await api.auth.login(loginEmail, '');
       setCurrentUser(user);
       setSelectedUserId(user.id);
       if (user.place_id) {
@@ -897,7 +877,11 @@ export default function App() {
   const checkSession = async () => {
     if (!currentUser) return;
     try {
-      await fetchAPI("/api/auth/me");
+      const freshUser = await api.auth.me();
+      if (freshUser && freshUser.id) {
+        setCurrentUser((prev: any) => ({ ...prev, ...freshUser }));
+        localStorage.setItem("currentUser", JSON.stringify({ ...currentUser, ...freshUser }));
+      }
     } catch (err) {
       console.error("Session verification failed, logging out", err);
       logout();
@@ -906,8 +890,12 @@ export default function App() {
 
   const fetchTopics = async () => {
     try {
+<<<<<<< HEAD
       const url = currentUser ? `/api/topics?userId=${currentUser.id}` : "/api/topics";
       const data = await fetchAPI(url);
+=======
+      const data = await api.topics.list();
+>>>>>>> nitro
       setTopics(data);
     } catch (err) {
       console.error(err);
@@ -917,8 +905,13 @@ export default function App() {
   const fetchFollowedTopics = async () => {
     if (!currentUser) return;
     try {
+<<<<<<< HEAD
       const data = await fetchAPI(`/api/topics/followed/${currentUser.id}`);
       if (data) setFollowedTopics(data);
+=======
+      const data = await api.setup.status();
+      setIsSetupNeeded(!data.initialized);
+>>>>>>> nitro
     } catch (err) {
       console.error(err);
     }
@@ -1003,9 +996,7 @@ export default function App() {
   const fetchConversations = async () => {
     if (!currentUser) return;
     try {
-      const data = await fetchAPI(
-        `/api/messages/conversations/${currentUser.id}`,
-      );
+      const data = await api.messages.conversations(currentUser.id);
       setConversations(data);
     } catch (err) {
       console.error(err);
@@ -1015,9 +1006,7 @@ export default function App() {
   const fetchChatMessages = async (targetId: string | number) => {
     if (!currentUser) return;
     try {
-      const data = await fetchAPI(
-        `/api/messages/${currentUser.id}/${targetId}`,
-      );
+      const data = await api.messages.thread(currentUser.id, targetId);
       setChatMessages(data);
       if (activeTab === "messages" && !activeChatUser) {
         fetchConversations();
@@ -1030,14 +1019,7 @@ export default function App() {
   const sendChatMessage = async () => {
     if (!currentUser || !activeChatUser || !newChatMessage.trim()) return;
     try {
-      await fetchAPI("/api/messages", {
-        method: "POST",
-        body: JSON.stringify({
-          sender_id: currentUser.id,
-          receiver_id: activeChatUser.id,
-          content: newChatMessage,
-        }),
-      });
+      await api.messages.send(currentUser.id, activeChatUser.id, newChatMessage);
       setNewChatMessage("");
       fetchChatMessages(activeChatUser.id);
       fetchConversations();
@@ -1052,6 +1034,8 @@ export default function App() {
       const interval = setInterval(fetchConversations, 10000);
       return () => clearInterval(interval);
     }
+
+    return undefined;
   }, [currentUser]);
 
   useEffect(() => {
@@ -1063,6 +1047,8 @@ export default function App() {
       );
       return () => clearInterval(interval);
     }
+
+    return undefined;
   }, [activeChatUser]);
 
   const fetchSearch = async () => {
@@ -1072,9 +1058,13 @@ export default function App() {
     }
     setLoading(true);
     try {
+<<<<<<< HEAD
       const data = await fetchAPI(
         `/api/search?q=${debouncedSearchQuery}&type=${searchType || "all"}`,
       );
+=======
+      const data = await api.search.all(searchQuery, searchType || 'all');
+>>>>>>> nitro
       setSearchResults(data);
       setPosts(data.posts || []);
       setJobs(data.jobs || []);
@@ -1090,7 +1080,7 @@ export default function App() {
   const fetchFeed = async () => {
     setLoading(true);
     try {
-      const data = await fetchAPI("/api/content");
+      const data = await api.posts.feed();
       setPosts(data);
     } finally {
       setLoading(false);
@@ -1099,7 +1089,7 @@ export default function App() {
 
   const fetchApplicants = async (jobId: string | number) => {
     try {
-      const data = await fetchAPI(`/api/jobs/${jobId}/applicants`);
+      const data = await api.jobs.applicants(jobId);
       setApplicants(data);
       setSelectedJobId(jobId);
       setActiveMainTab("applicants");
@@ -1109,28 +1099,28 @@ export default function App() {
   };
 
   const updateApplicantStatus = async (appId: number, status: string) => {
-    await fetchAPI("/api/jobs/applications/status", {
-      method: "POST",
-      body: JSON.stringify({ applicationId: appId, status }),
-    });
+    await api.jobs.updateApplicationStatus(appId, status);
     if (selectedJobId) fetchApplicants(selectedJobId);
   };
 
   const fetchProfile = async (id: number | string) => {
     setProfileData(null);
     setIsConnected(false);
+    setIsProfileLoading(true);
     try {
-      const viewerId = currentUser?.id ? `?viewerId=${currentUser.id}` : "";
-      const data = await fetchAPI(`/api/profile/${id}${viewerId}`);
+      const profileId = normalizeUserId(id);
+      if (!profileId) throw new Error("Invalid profile id");
+      const data = await api.profile.get(profileId, currentUser?.id ? normalizeUserId(currentUser.id) : undefined);
       if (!data || data.error) {
         throw new Error(data.error || "User not found");
       }
       setProfileData(data);
-      if (currentUser && currentUser.id !== id) {
+      if (
+        currentUser &&
+        normalizeUserId(currentUser.id) !== profileId
+      ) {
         try {
-          const connStatus = await fetchAPI(
-            `/api/connections/status/${currentUser.id}/${id}`,
-          );
+          const connStatus = await api.connections.status(normalizeUserId(currentUser.id), profileId);
           setIsConnected(connStatus.connected);
         } catch (e) {
           console.warn("Connection status check failed:", e);
@@ -1143,6 +1133,8 @@ export default function App() {
       } else {
         setError(err.message || "Profile not found");
       }
+    } finally {
+      setIsProfileLoading(false);
     }
   };
 
@@ -1150,18 +1142,10 @@ export default function App() {
     if (!currentUser) return;
     try {
       if (isConnected) {
-        await fetchAPI(`/api/connections/${currentUser.id}/${targetId}`, {
-          method: "DELETE",
-        });
+        await api.connections.remove(currentUser.id, String(targetId));
         setIsConnected(false);
       } else {
-        await fetchAPI("/api/connections", {
-          method: "POST",
-          body: JSON.stringify({
-            user_id: currentUser.id,
-            target_id: targetId,
-          }),
-        });
+        await api.connections.create(currentUser.id, targetId);
         setIsConnected(true);
       }
       fetchNotifications();
@@ -1172,7 +1156,11 @@ export default function App() {
 
   const fetchCandidates = async () => {
     try {
+<<<<<<< HEAD
       const data = await fetchAPI(`/api/candidates?skills=${debouncedSearchQuery}`);
+=======
+      const data = await api.candidates.list(searchQuery);
+>>>>>>> nitro
       setCandidates(data);
     } catch (err) {
       console.error(err);
@@ -1181,10 +1169,7 @@ export default function App() {
 
   const fetchRecommendations = async () => {
     try {
-      const url = currentUser
-        ? `/api/recommendations/${currentUser.id}`
-        : "/api/recommendations";
-      const data = await fetchAPI(url);
+      const data = await api.recommendations.get(currentUser?.id);
       setRecommendations(data);
     } catch (err) {
       console.error(err);
@@ -1193,6 +1178,7 @@ export default function App() {
 
   const fetchJobs = async () => {
     try {
+<<<<<<< HEAD
       const query = new URLSearchParams();
       const searchTerm = searchType === "jobs" ? debouncedSearchQuery : jobFilters.q;
       if (searchTerm) query.set("q", searchTerm);
@@ -1203,6 +1189,14 @@ export default function App() {
         query.set("placeId", selectedPlaceId.toString());
 
       const data = await fetchAPI(`/api/jobs?${query.toString()}`);
+=======
+      const data = await api.jobs.list({
+        q: searchType === 'jobs' ? searchQuery : jobFilters.q,
+        experience: jobFilters.experience,
+        minSalary: jobFilters.minSalary,
+        placeId: selectedPlaceId !== 'all' ? selectedPlaceId.toString() : undefined,
+      });
+>>>>>>> nitro
       setJobs(data);
     } catch (err) {
       console.error(err);
@@ -1218,15 +1212,7 @@ export default function App() {
 
   const applyToJob = async () => {
     if (!currentUser || !applyingToJobId) return;
-    const res = await fetchAPI("/api/jobs/apply", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: currentUser.id,
-        job_id: applyingToJobId,
-        attachment_type: appAttachmentType,
-        attachment_id: appAttachmentId,
-      }),
-    });
+    const res = await api.jobs.apply(currentUser.id, applyingToJobId, appAttachmentType, appAttachmentId);
     alert(res.message || "Application sent successfully!");
     setApplyingToJobId(null);
     setAppAttachmentType("none");
@@ -1236,13 +1222,10 @@ export default function App() {
   const postJob = async () => {
     if (!currentUser || !newJob.title || !newJob.description) return;
     try {
-      await fetchAPI("/api/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          company_name: currentUser.full_name,
-          ...newJob,
-        }),
+      await api.jobs.create({
+        user_id: currentUser.id,
+        company_name: currentUser.full_name,
+        ...newJob,
       });
       setNewJob({
         title: "",
@@ -1263,7 +1246,7 @@ export default function App() {
   const fetchNotifications = async () => {
     if (!currentUser) return;
     try {
-      const data = await fetchAPI(`/api/notifications/${currentUser.id}`);
+      const data = await api.notifications.list();
       setNotifications(data);
     } catch (err) {
       console.error(err);
@@ -1273,7 +1256,7 @@ export default function App() {
   const fetchUserFiles = async () => {
     if (!currentUser) return;
     try {
-      const data = await fetchAPI(`/api/files/${currentUser.id}`);
+      const data = await api.files.list(currentUser.id);
       setUserFiles(data);
     } catch (err) {
       console.error(err);
@@ -1288,25 +1271,16 @@ export default function App() {
   ) => {
     if (!currentUser) return;
     try {
-      await fetchAPI("/api/files", {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          name,
-          url,
-          type,
-          purpose,
-        }),
-      });
+      await api.files.upload(currentUser.id, name, url, type, purpose);
       fetchUserFiles();
     } catch (err) {
       console.error(err);
     }
   };
 
-  const deleteFile = async (fileId: number) => {
+  const deleteFile = async (fileId: string | number) => {
     try {
-      await fetchAPI(`/api/files/${fileId}`, { method: "DELETE" });
+      await api.files.delete(fileId);
       fetchUserFiles();
     } catch (err) {
       console.error(err);
@@ -1316,7 +1290,7 @@ export default function App() {
   const fetchJobAlerts = async () => {
     if (!currentUser) return;
     try {
-      const data = await fetchAPI(`/api/job-alerts/${currentUser.id}`);
+      const data = await api.jobAlerts.list(currentUser.id);
       setJobAlerts(data);
     } catch (err) {
       console.error(err);
@@ -1326,10 +1300,7 @@ export default function App() {
   const createJobAlert = async () => {
     if (!currentUser) return;
     try {
-      await fetchAPI("/api/job-alerts", {
-        method: "POST",
-        body: JSON.stringify({ ...newJobAlert, user_id: currentUser.id }),
-      });
+      await api.jobAlerts.create(currentUser.id, newJobAlert);
       setNewJobAlert({ keyword: "", experience_level: "all", location: "" });
       setShowJobAlertForm(false);
       fetchJobAlerts();
@@ -1340,7 +1311,7 @@ export default function App() {
 
   const deleteJobAlert = async (id: string | number) => {
     try {
-      await fetchAPI(`/api/job-alerts/${id}`, { method: "DELETE" });
+      await api.jobAlerts.delete(id);
       fetchJobAlerts();
     } catch (err) {
       console.error(err);
@@ -1357,13 +1328,12 @@ export default function App() {
       }, 30000); // Poll every 30s
       return () => clearInterval(interval);
     }
+
+    return undefined;
   }, [currentUser]);
 
   const markAsRead = async (id: number) => {
-    await fetchAPI("/api/notifications/read", {
-      method: "POST",
-      body: JSON.stringify({ notificationId: id }),
-    });
+    await api.notifications.markRead(id);
     fetchNotifications();
   };
 
@@ -1402,7 +1372,11 @@ export default function App() {
   const handleAiMagicPost = async (instruction?: string) => {
     setIsAiLoading(true);
     try {
-      const result = await geminiService.magicPost(postContent, instruction);
+      const result = await geminiService.magicPost(postContent, instruction, {
+        onChunk: (_chunk, fullText) => {
+          if (fullText) setPostContent(fullText);
+        },
+      });
       if (result) {
         setAiOptimizedPost(result);
         setPostContent(result.optimizedContent);
@@ -1416,6 +1390,7 @@ export default function App() {
     }
   };
 
+<<<<<<< HEAD
   const handleAiMagicJob = async (instruction?: string) => {
     setIsAiLoading(true);
     try {
@@ -1434,6 +1409,14 @@ export default function App() {
       console.error("AI Job Magic failed:", err);
     } finally {
       setIsAiLoading(false);
+=======
+  const handleAiBio = async (instruction: string) => {
+    if (!currentUser) return;
+    const newBio = await geminiService.magicBio(profileData?.bio || "", instruction);
+    if (newBio) {
+      await api.profile.update(currentUser.id, { bio: newBio });
+      fetchProfile(currentUser.id);
+>>>>>>> nitro
     }
   };
 
@@ -1460,14 +1443,7 @@ export default function App() {
     index: number,
   ) => {
     try {
-      await fetchAPI(`/api/posts/${postId}/respond`, {
-        method: "POST",
-        body: JSON.stringify({
-          user_id: currentUser!.id,
-          type,
-          response_index: index,
-        }),
-      });
+      await api.posts.respond(postId, currentUser!.id, type, index);
       fetchFeed();
     } catch (error) {
       console.error(error);
@@ -1513,10 +1489,7 @@ export default function App() {
   const updateProfile = async () => {
     if (!currentUser) return;
     try {
-      const resp = await fetchAPI("/api/profile", {
-        method: "PUT",
-        body: JSON.stringify({ ...profileForm, user_id: currentUser.id }),
-      });
+      const resp = await api.profile.update(currentUser.id, profileForm);
       if (resp.success) {
         // Refresh profile data in panel
         fetchProfile(currentUser.id);
@@ -1534,10 +1507,7 @@ export default function App() {
   const addSkill = async (skillData?: any) => {
     if (!currentUser) return;
     const data = skillData || skillForm;
-    await fetchAPI("/api/skills", {
-      method: "POST",
-      body: JSON.stringify({ ...data, user_id: currentUser.id }),
-    });
+    await api.skills.add(currentUser.id, data);
     fetchProfile(currentUser.id);
     setShowSkillForm(false);
     setSkillForm({ name: "", proficiency: 3, verification_url: "" });
@@ -1545,24 +1515,14 @@ export default function App() {
 
   const verifySkill = async (skillName: string, url: string) => {
     if (!currentUser || !url) return;
-    await fetchAPI("/api/skills/verify", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: currentUser.id,
-        name: skillName,
-        verification_url: url,
-      }),
-    });
+    await api.skills.verify(currentUser.id, skillName, url);
     fetchProfile(currentUser.id);
   };
 
   const addPortfolioItem = async (pData?: any) => {
     if (!currentUser) return;
     const data = pData || portfolioForm;
-    await fetchAPI("/api/portfolio", {
-      method: "POST",
-      body: JSON.stringify({ ...data, user_id: currentUser.id }),
-    });
+    await api.portfolio.add(currentUser.id, data);
     fetchProfile(currentUser.id);
     setShowPortfolioForm(false);
   };
@@ -1571,10 +1531,7 @@ export default function App() {
     if (!currentUser) return;
     const data = cData || cvForm;
     try {
-      await fetchAPI("/api/cv", {
-        method: "POST",
-        body: JSON.stringify({ ...data, user_id: currentUser.id }),
-      });
+      await api.cv.add(currentUser.id, data);
       fetchProfile(currentUser.id);
       setShowCVForm(false);
       setCvForm({
@@ -1603,16 +1560,13 @@ export default function App() {
 
   const handleDeletePost = async (postId: string | number) => {
     try {
-      await fetchAPI(`/api/posts/${postId}`, {
-        method: "DELETE",
-        headers: { "x-user-id": currentUser?.id?.toString() || "" },
-      });
+      await api.posts.delete(postId);
       // Refresh posts
       if (searchQuery) {
         fetchSearch();
       } else {
-        const data = await fetchAPI("/api/content");
-        setPosts(data.posts || []);
+        const data = await api.posts.feed();
+        setPosts(Array.isArray(data) ? data : []);
       }
     } catch (e: any) {
       console.error(e);
@@ -1623,22 +1577,15 @@ export default function App() {
   const handleUpdatePost = async () => {
     if (!editingPostId || !editingPostContent) return;
     try {
-      await fetchAPI(`/api/posts/${editingPostId}`, {
-        method: "PUT",
-        headers: { 
-          "x-user-id": currentUser?.id?.toString() || "",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ content: editingPostContent }),
-      });
+      await api.posts.update(editingPostId, editingPostContent);
       setEditingPostId(null);
       setEditingPostContent("");
       // Refresh posts
       if (searchQuery) {
         fetchSearch();
       } else {
-        const data = await fetchAPI("/api/content");
-        setPosts(data.posts || []);
+        const data = await api.posts.feed();
+        setPosts(Array.isArray(data) ? data : []);
       }
     } catch (e: any) {
       console.error(e);
@@ -1649,16 +1596,13 @@ export default function App() {
 
   const submitPost = async () => {
     if ((!postContent && !postQuiz && !postPoll) || !currentUser) return;
-    await fetchAPI("/api/posts", {
-      method: "POST",
-      body: JSON.stringify({
-        user_id: currentUser.id,
-        content: postContent,
-        attachment_type: attachmentType === "none" ? null : attachmentType,
-        attachment_id: attachmentId,
-        quiz_data: postQuiz,
-        poll_data: postPoll,
-      }),
+    await api.posts.create({
+      user_id: currentUser.id,
+      content: postContent,
+      attachment_type: attachmentType === 'none' ? null : attachmentType,
+      attachment_id: attachmentId,
+      quiz_data: postQuiz,
+      poll_data: postPoll,
     });
     setPostContent("");
     setAttachmentType("none");
@@ -1699,55 +1643,13 @@ export default function App() {
           path="/"
           element={
             <>
-              <AnimatePresence>
-                {editingPostId && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-                  >
-                    <motion.div
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.9, opacity: 0 }}
-                      className="bg-white rounded-3xl p-6 max-w-xl w-full shadow-2xl space-y-4"
-                    >
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-xl font-black tracking-tight">Edit Post</h3>
-                        <button 
-                          onClick={() => setEditingPostId(null)}
-                          className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
-                        >
-                          <X className="w-5 h-5 text-neutral-400" />
-                        </button>
-                      </div>
-                      <textarea
-                        value={editingPostContent}
-                        onChange={(e) => setEditingPostContent(e.target.value)}
-                        className="w-full h-40 bg-neutral-50 border border-neutral-100 rounded-2xl p-4 outline-none focus:border-black transition-all font-medium text-sm resize-none"
-                        placeholder="Write your update..."
-                      />
-                      <div className="flex gap-3 justify-end">
-                        <Button
-                          variant="ghost"
-                          className="rounded-xl px-6"
-                          onClick={() => setEditingPostId(null)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          className="rounded-xl px-10"
-                          onClick={handleUpdatePost}
-                          disabled={!editingPostContent.trim()}
-                        >
-                          Save Changes
-                        </Button>
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <EditPostModal
+                isOpen={Boolean(editingPostId)}
+                content={editingPostContent}
+                onContentChange={setEditingPostContent}
+                onClose={() => setEditingPostId(null)}
+                onSave={handleUpdatePost}
+              />
               {/* LEFT COLUMN: DISCOVER / SEARCH */}
               <AnimatePresence>
                 {isLeftOpen && (
@@ -1869,7 +1771,7 @@ export default function App() {
                           ) : (
                             <div className="p-4 bg-neutral-50 rounded-xl border border-dashed border-neutral-200">
                               <p className="text-[10px] text-neutral-400 text-center font-bold uppercase tracking-widest leading-relaxed">
-                                No discovery nodes found.<br/>Sync more to explore.
+                                No discovery nodes found.<br />Sync more to explore.
                               </p>
                             </div>
                           )}
@@ -1928,7 +1830,7 @@ export default function App() {
                         onClick={() => {
                           if (currentUser) {
                             setSelectedUserId(currentUser.id);
-                            setActiveTab(null);
+                            setActiveTab("profile");
                             setIsRightOpen(true);
                             setIsEditingProfile(false);
                           } else {
@@ -2037,6 +1939,7 @@ export default function App() {
                           {searchResults.users?.some(
                             (u: any) => u.is_company_rep,
                           ) && (
+<<<<<<< HEAD
                             <section>
                               <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">
                                 {t("App.organizations") || "Organizations"}
@@ -2055,11 +1958,73 @@ export default function App() {
                                       className="flex-shrink-0 w-32 flex flex-col items-center text-center group"
                                     >
                                       <div className="relative">
+=======
+                              <section>
+                                <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">
+                                  {t("App.organizations") || "Organizations"}
+                                </h3>
+                                <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                                  {searchResults.users
+                                    .filter((u: any) => u.is_company_rep)
+                                    .map((u: any) => (
+                                      <button
+                                        key={u.id}
+                                        onClick={() => {
+                                          setSelectedUserId(u.id);
+                                          setActiveTab("profile");
+                                          setIsRightOpen(true);
+                                        }}
+                                        className="flex-shrink-0 w-32 flex flex-col items-center text-center group"
+                                      >
+                                        <div className="relative">
+                                          <Avatar
+                                            src={u.avatar_url}
+                                            name={u.full_name}
+                                            size="md"
+                                          />
+                                          <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-full border border-white">
+                                            <Briefcase className="w-2 h-2" />
+                                          </div>
+                                        </div>
+                                        <p className="text-[10px] font-bold mt-2 truncate w-full">
+                                          {u.full_name}
+                                        </p>
+                                        <p className="text-[8px] text-neutral-400 truncate w-full uppercase">
+                                          Verified Org
+                                        </p>
+                                      </button>
+                                    ))}
+                                </div>
+                              </section>
+                            )}
+
+                          {searchResults.users?.some(
+                            (u: any) => !u.is_company_rep,
+                          ) && (
+                              <section>
+                                <h3 className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-4">
+                                  {t("App.users") || "Users"}
+                                </h3>
+                                <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
+                                  {searchResults.users
+                                    .filter((u: any) => !u.is_company_rep)
+                                    .map((u: any) => (
+                                      <button
+                                        key={u.id}
+                                        onClick={() => {
+                                          setSelectedUserId(u.id);
+                                          setActiveTab("profile");
+                                          setIsRightOpen(true);
+                                        }}
+                                        className="flex-shrink-0 w-32 flex flex-col items-center text-center group"
+                                      >
+>>>>>>> nitro
                                         <Avatar
                                           src={u.avatar_url}
                                           name={u.full_name}
                                           size="md"
                                         />
+<<<<<<< HEAD
                                         <div className="absolute -bottom-1 -right-1 bg-black text-white p-1 rounded-full border border-white">
                                           <Briefcase className="w-2 h-2" />
                                         </div>
@@ -2112,6 +2077,19 @@ export default function App() {
                               </div>
                             </section>
                           )}
+=======
+                                        <p className="text-[10px] font-bold mt-2 truncate w-full">
+                                          {u.full_name}
+                                        </p>
+                                        <p className="text-[8px] text-neutral-400 truncate w-full uppercase font-mono">
+                                          {u.headline?.split("|")[0]}
+                                        </p>
+                                      </button>
+                                    ))}
+                                </div>
+                              </section>
+                            )}
+>>>>>>> nitro
                         </div>
                       )}
 
@@ -2301,7 +2279,7 @@ export default function App() {
                                     className={cn(
                                       "p-1.5 rounded-lg transition-all flex items-center gap-2 text-purple-600 hover:bg-purple-50",
                                       showAiPrompt &&
-                                        "bg-purple-50 shadow-inner",
+                                      "bg-purple-50 shadow-inner",
                                     )}
                                     title={t("ai_command")}
                                   >
@@ -2507,7 +2485,7 @@ export default function App() {
                                         className={cn(
                                           "flex-1 bg-white border border-yellow-50 rounded-lg px-3 py-1.5 text-[10px] focus:ring-1 focus:ring-yellow-500 outline-none",
                                           postQuiz.correctIndex === i &&
-                                            "border-yellow-300 ring-1 ring-yellow-300",
+                                          "border-yellow-300 ring-1 ring-yellow-300",
                                         )}
                                         value={opt}
                                         onChange={(e) => {
@@ -2727,218 +2705,8 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                  ) : activeMainTab === "applicants" ? (
-                    <div className="space-y-6 animate-in fade-in duration-500">
-                      <header className="flex items-center justify-between">
-                        <div>
-                          <h2 className="text-xl font-bold tracking-tight">
-                            Applicant Portal
-                          </h2>
-                          <p className="text-xs text-neutral-500">
-                            Managing talent for Job ID: {selectedJobId}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            onClick={handleAiShortlistApplicants}
-                            disabled={isAiLoading}
-                            variant="outline"
-                            className="text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
-                          >
-                            <Sparkles
-                              className={cn(
-                                "w-3 h-3 mr-2",
-                                isAiLoading && "animate-spin",
-                              )}
-                            />
-                            {t("App.ai_search")}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={() => setActiveMainTab("jobs")}
-                            className="text-xs"
-                          >
-                            Back to Jobs
-                          </Button>
-                        </div>
-                      </header>
-
-                      <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-white border border-neutral-200 rounded-3xl p-4 shadow-sm">
-                        <div className="flex flex-wrap gap-2">
-                          {(["all", "pending", "shortlisted"] as const).map(
-                            (f) => (
-                              <button
-                                key={f}
-                                onClick={() => setApplicantFilter(f)}
-                                className={cn(
-                                  "px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all",
-                                  applicantFilter === f
-                                    ? "bg-black text-white shadow-sm"
-                                    : "bg-neutral-50 text-neutral-400 hover:bg-neutral-100",
-                                )}
-                              >
-                                {f}
-                              </button>
-                            ),
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 w-full md:w-auto">
-                          <div className="relative flex-1 md:w-48">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-400" />
-                            <input
-                              type="text"
-                              placeholder="Search name..."
-                              value={applicantSearch}
-                              onChange={(e) =>
-                                setApplicantSearch(e.target.value)
-                              }
-                              className="w-full bg-neutral-50 border border-neutral-100 rounded-xl pl-8 pr-3 py-2 text-[10px] focus:ring-1 focus:ring-black outline-none"
-                            />
-                          </div>
-                          <select
-                            value={applicantTypeFilter}
-                            onChange={(e: any) =>
-                              setApplicantTypeFilter(e.target.value)
-                            }
-                            className="bg-neutral-50 border border-neutral-100 rounded-xl px-2 py-2 text-[10px] font-bold text-neutral-500 uppercase outline-none"
-                          >
-                            <option value="all">Any Proof</option>
-                            <option value="cv_item">CV Only</option>
-                            <option value="portfolio_item">
-                              Portfolio Only
-                            </option>
-                            <option value="none">No Proof</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        {applicants
-                          .filter((a) => {
-                            const matchesStatus =
-                              applicantFilter === "all" ||
-                              a.status === applicantFilter;
-                            const matchesSearch = (a.full_name || "")
-                              .toLowerCase()
-                              .includes((applicantSearch || "").toLowerCase());
-                            const matchesType =
-                              applicantTypeFilter === "all" ||
-                              a.attachment_type === applicantTypeFilter;
-                            return (
-                              matchesStatus && matchesSearch && matchesType
-                            );
-                          })
-                          .map((applicant) => (
-                            <Card
-                              key={applicant.id}
-                              className="p-4 flex items-center gap-4 hover:border-neutral-300 transition-colors group"
-                            >
-                              <Avatar
-                                src={applicant.avatar_url}
-                                name={applicant.full_name}
-                                className="ring-2 ring-offset-2 ring-transparent group-hover:ring-black/5 transition-all"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="font-bold text-sm truncate">
-                                    {applicant.full_name}
-                                  </h4>
-                                  {applicant.attachment_type !== "none" && (
-                                    <span className="bg-neutral-100 text-neutral-500 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-tighter">
-                                      {applicant.attachment_type.replace(
-                                        "_",
-                                        " ",
-                                      )}{" "}
-                                      Attached
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[10px] text-neutral-500 truncate uppercase font-mono">
-                                  {applicant.headline}
-                                </p>
-                                {aiApplicantsFeedback?.find(
-                                  (f) => f.applicantId === applicant.user_id,
-                                ) && (
-                                  <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg animate-in fade-in zoom-in-95">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <div className="flex items-center gap-1">
-                                        <Sparkles className="w-2.5 h-2.5 text-blue-500" />
-                                        <span className="text-[8px] font-bold text-blue-600 uppercase">
-                                          AI Analysis
-                                        </span>
-                                      </div>
-                                      <span
-                                        className={cn(
-                                          "text-[10px] font-bold",
-                                          (aiApplicantsFeedback.find(
-                                            (f) =>
-                                              f.applicantId ===
-                                              applicant.user_id,
-                                          )?.score || 0) > 80
-                                            ? "text-green-600"
-                                            : "text-blue-600",
-                                        )}
-                                      >
-                                        {
-                                          aiApplicantsFeedback.find(
-                                            (f) =>
-                                              f.applicantId ===
-                                              applicant.user_id,
-                                          )?.score
-                                        }
-                                        %
-                                      </span>
-                                    </div>
-                                    <p className="text-[9px] text-blue-800 line-clamp-2 italic">
-                                      {
-                                        aiApplicantsFeedback.find(
-                                          (f) =>
-                                            f.applicantId === applicant.user_id,
-                                        )?.reasoning
-                                      }
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex gap-2">
-                                {applicant.status === "pending" && (
-                                  <Button
-                                    onClick={() =>
-                                      updateApplicantStatus(
-                                        applicant.id,
-                                        "shortlisted",
-                                      )
-                                    }
-                                    variant="outline"
-                                    className="h-8 text-[10px] font-bold border-neutral-200 hover:border-black transition-colors px-4"
-                                  >
-                                    Shortlist
-                                  </Button>
-                                )}
-                                {applicant.status === "shortlisted" && (
-                                  <span className="bg-black text-white px-3 py-1 rounded-xl text-[10px] font-bold flex items-center gap-2">
-                                    <CheckCircle2 className="w-3 h-3" />{" "}
-                                    Shortlisted
-                                  </span>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => {
-                                    setSelectedUserId(applicant.user_id);
-                                    setIsRightOpen(true);
-                                    setActiveTab("profile");
-                                  }}
-                                  className="h-8 text-[10px] font-bold text-neutral-400 hover:text-black"
-                                >
-                                  Inspect Profile
-                                </Button>
-                              </div>
-                            </Card>
-                          ))}
-                      </div>
-                    </div>
                   ) : (
+<<<<<<< HEAD
                     <div className="space-y-6">
                       {/* Job Alerts UI */}
                       <div className="bg-gradient-to-br from-neutral-900 to-black rounded-3xl p-6 text-white shadow-xl overflow-hidden relative group">
@@ -3575,6 +3343,56 @@ export default function App() {
                         )}
                       </div>
                     </div>
+=======
+                    <JobsFeature
+                      view={activeMainTab === "applicants" ? "applicants" : "jobs"}
+                      onViewChange={setActiveMainTab}
+                      selectedJobId={selectedJobId}
+                      isAiLoading={isAiLoading}
+                      onAiShortlistApplicants={handleAiShortlistApplicants}
+                      applicantFilter={applicantFilter}
+                      setApplicantFilter={setApplicantFilter}
+                      applicantSearch={applicantSearch}
+                      setApplicantSearch={setApplicantSearch}
+                      applicantTypeFilter={applicantTypeFilter}
+                      setApplicantTypeFilter={setApplicantTypeFilter}
+                      applicants={applicants}
+                      aiApplicantsFeedback={aiApplicantsFeedback}
+                      onUpdateApplicantStatus={updateApplicantStatus}
+                      onInspectApplicant={(userId) => {
+                        setSelectedUserId(userId);
+                        setIsRightOpen(true);
+                        setActiveTab("profile");
+                      }}
+                      jobAlerts={jobAlerts}
+                      showJobAlertForm={showJobAlertForm}
+                      setShowJobAlertForm={setShowJobAlertForm}
+                      newJobAlert={newJobAlert}
+                      setNewJobAlert={setNewJobAlert}
+                      onCreateJobAlert={createJobAlert}
+                      onDeleteJobAlert={deleteJobAlert}
+                      selectedPlaceId={selectedPlaceId}
+                      setSelectedPlaceId={setSelectedPlaceId}
+                      places={places}
+                      jobFilters={jobFilters}
+                      setJobFilters={setJobFilters}
+                      currentUser={currentUser}
+                      showJobForm={showJobForm}
+                      setShowJobForm={setShowJobForm}
+                      newJob={newJob}
+                      setNewJob={setNewJob}
+                      onPostJob={postJob}
+                      jobs={jobs}
+                      onFetchApplicants={fetchApplicants}
+                      applyingToJobId={applyingToJobId}
+                      setApplyingToJobId={setApplyingToJobId}
+                      appAttachmentType={appAttachmentType}
+                      setAppAttachmentType={setAppAttachmentType}
+                      setAppAttachmentId={setAppAttachmentId}
+                      profileData={profileData}
+                      onApplyToJob={applyToJob}
+                    />
+>>>>>>> nitro
                   )}
                 </div>
               </main>
@@ -3622,13 +3440,7 @@ export default function App() {
                               : e.target.value;
                           setSelectedPlaceId(pid);
                           if (currentUser) {
-                            fetchAPI("/api/user/preference/place", {
-                              method: "POST",
-                              body: JSON.stringify({
-                                user_id: currentUser.id,
-                                place_id: pid,
-                              }),
-                            });
+                            api.userPrefs.setPlace(currentUser.id, pid);
                           }
                         }}
                       >
@@ -3652,267 +3464,30 @@ export default function App() {
                   </div>
 
                   {!currentUser ? (
-                    <div className="flex-1 flex flex-col p-8 overflow-y-auto bg-white">
-                      <div className="flex justify-end items-center mb-6">
-                        <button
-                          onClick={() => setIsRightOpen(false)}
-                          className="lg:hidden text-neutral-300"
-                        >
-                          <Plus className="w-5 h-5 rotate-45" />
-                        </button>
-                      </div>
-
-                      <div className="flex justify-center mb-8">
-                        <div className="bg-black p-5 rounded-[28px] shadow-2xl shadow-black/20">
-                          <ShieldCheck className="w-10 h-10 text-white" />
-                        </div>
-                      </div>
-
-                      <h1 className="text-2xl font-black text-center mb-1 tracking-tight">
-                        ProSync Oman
-                      </h1>
-                      <p className="text-neutral-400 text-center mb-8 text-sm font-medium">
-                        {t("verified_network_oman")}
-                      </p>
-
-                      <div className="space-y-4 max-w-sm mx-auto w-full">
-                        {authStep === "email" && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="space-y-4"
-                          >
-                            <div className="relative group">
-                              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
-                              <input
-                                type="email"
-                                placeholder="example@work.om"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                onKeyDown={(e) =>
-                                  e.key === "Enter" && handleCheckEmail()
-                                }
-                                className="w-full pl-11 pr-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black focus:ring-4 focus:ring-black/5 transition-all font-bold text-sm"
-                              />
-                            </div>
-                            <Button
-                              onClick={handleCheckEmail}
-                              disabled={isLoading}
-                              className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm shadow-xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                              {isLoading ? (
-                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                              ) : (
-                                "Continue"
-                              )}
-                              <ChevronRight className="w-4 h-4" />
-                            </Button>
-
-                            <div className="pt-2 text-center">
-                              <p className="text-[10px] font-bold text-neutral-400">
-                                {t("Auth.no_account") || "Don't have an account?"}{" "}
-                                <button
-                                  onClick={() => setAuthStep("register")}
-                                  className="text-black hover:underline cursor-pointer"
-                                >
-                                  {t("Auth.sign_up_now") || "Sign up now"}
-                                </button>
-                              </p>
-                            </div>
-                          </motion.div>
-                        )}
-
-                        {authStep === "password" && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="space-y-4"
-                          >
-                            <button
-                              onClick={() => setAuthStep("email")}
-                              className="text-xs font-bold text-neutral-400 flex items-center gap-1 hover:text-black transition-colors"
-                            >
-                              <ChevronRight className="w-4 h-4 rotate-180" />{" "}
-                              Back to Email
-                            </button>
-                            <div className="p-3 bg-neutral-50 rounded-xl flex items-center gap-3 mb-2">
-                              <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-[10px] font-black">
-                                {email ? email[0].toUpperCase() : "?"}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
-                                  Logging in as
-                                </p>
-                                <p className="text-xs font-bold truncate">
-                                  {email}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="relative group">
-                              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-black transition-colors" />
-                              <input
-                                type="password"
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                onKeyDown={(e) =>
-                                  e.key === "Enter" && handleLogin()
-                                }
-                                autoFocus
-                                className="w-full pl-11 pr-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black focus:ring-4 focus:ring-black/5 transition-all font-bold text-sm"
-                              />
-                            </div>
-                            <div className="flex justify-end">
-                              <button
-                                onClick={handleForgotPassword}
-                                className="text-[10px] font-bold text-neutral-400 hover:text-black transition-colors"
-                              >
-                                {t("Auth.forgot_password")}
-                              </button>
-                            </div>
-                            <Button
-                              onClick={handleLogin}
-                              disabled={isLoading}
-                              className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm shadow-xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                              {isLoading ? (
-                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                              ) : (
-                                t("Auth.login")
-                              )}
-                            </Button>
-                          </motion.div>
-                        )}
-
-                        {authStep === "register" && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="space-y-4"
-                          >
-                            <button
-                              onClick={() => setAuthStep("email")}
-                              className="text-xs font-bold text-neutral-400 flex items-center gap-1 hover:text-black transition-colors"
-                            >
-                              <ChevronRight className="w-4 h-4 rotate-180" />{" "}
-                              {t("Auth.back_to_email")}
-                            </button>
-                            <p className="text-xs font-bold text-neutral-500">
-                              {t("Auth.create_identity")}
-                            </p>
-                            <div className="space-y-3">
-                              <input
-                                type="text"
-                                placeholder={t("Auth.full_name")}
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
-                                className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
-                              />
-                              <input
-                                type="email"
-                                placeholder={t("Auth.email") || "Email Address"}
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
-                              />
-                              <input
-                                type="password"
-                                placeholder={t("Auth.password")}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
-                              />
-                            </div>
-                            <Button
-                              onClick={handleRegister}
-                              disabled={isLoading}
-                              className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm shadow-xl shadow-black/10 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                              {isLoading ? (
-                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                              ) : (
-                                t("Auth.join_network")
-                              )}
-                            </Button>
-                          </motion.div>
-                        )}
-
-                        {authStep === "verify" && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="space-y-4"
-                          >
-                            <div className="text-center">
-                              <p className="text-xs font-bold text-neutral-500">
-                                {t("Auth.otp_verification")}
-                              </p>
-                              <p className="text-[10px] text-neutral-400">
-                                {t("Auth.otp_sent")} {email}
-                              </p>
-                            </div>
-                            <input
-                              type="text"
-                              placeholder="0 0 0 0 0 0"
-                              maxLength={6}
-                              value={otp}
-                              onChange={(e) =>
-                                setOtp(e.target.value.replace(/\D/g, ""))
-                              }
-                              className="w-full px-4 py-5 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black text-center font-mono font-black text-2xl tracking-[0.5em]"
-                            />
-                            {debugOtp && (
-                              <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-[10px] text-amber-700 font-mono text-center">
-                                DEBUG OTP: {debugOtp}
-                              </div>
-                            )}
-                            <Button
-                              onClick={handleVerifyOtp}
-                              disabled={isLoading || (otp?.length || 0) < 6}
-                              className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm transition-all"
-                            >
-                              {isLoading ? t("Auth.verifying") : t("Auth.verify_otp")}
-                            </Button>
-                          </motion.div>
-                        )}
-
-                        {authStep === "new_pass" && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="space-y-4"
-                          >
-                            <p className="text-xs font-bold text-neutral-500 text-center">
-                              {t("Auth.set_new_password")}
-                            </p>
-                            <input
-                              type="password"
-                              placeholder={t("Auth.password")}
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              className="w-full px-4 py-4 bg-neutral-50 border border-neutral-100 rounded-2xl outline-none focus:border-black transition-all font-bold text-sm"
-                            />
-                            <Button
-                              onClick={handleResetPassword}
-                              disabled={isLoading}
-                              className="w-full h-14 bg-black text-white rounded-2xl font-black text-sm transition-all"
-                            >
-                              {isLoading ? t("Auth.resetting") : t("Auth.reset_password")}
-                            </Button>
-                          </motion.div>
-                        )}
-
-                        {error && (
-                          <motion.p
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="text-[10px] text-red-500 font-bold bg-red-50 p-3 rounded-xl border border-red-100 text-center"
-                          >
-                            {error}
-                          </motion.p>
-                        )}
-                      </div>
-                    </div>
+                    <AuthPanel
+                      authStep={authStep}
+                      email={email}
+                      password={password}
+                      fullName={fullName}
+                      otp={otp}
+                      newPassword={newPassword}
+                      isLoading={isLoading}
+                      debugOtp={debugOtp}
+                      error={error}
+                      onClose={() => setIsRightOpen(false)}
+                      setAuthStep={setAuthStep}
+                      setEmail={setEmail}
+                      setPassword={setPassword}
+                      setFullName={setFullName}
+                      setOtp={setOtp}
+                      setNewPassword={setNewPassword}
+                      onCheckEmail={handleCheckEmail}
+                      onLogin={handleLogin}
+                      onRegister={handleRegister}
+                      onForgotPassword={handleForgotPassword}
+                      onVerifyOtp={handleVerifyOtp}
+                      onResetPassword={handleResetPassword}
+                    />
                   ) : (
                     <>
                       {/* TAB BAR */}
@@ -3965,8 +3540,8 @@ export default function App() {
                             (acc, c) => acc + (c.unread_count || 0),
                             0,
                           ) > 0 && (
-                            <span className="absolute top-2 right-4 w-1.5 h-1.5 bg-red-500 rounded-full border border-white" />
-                          )}
+                              <span className="absolute top-2 right-4 w-1.5 h-1.5 bg-red-500 rounded-full border border-white" />
+                            )}
                         </button>
                       </div>
 
@@ -4009,11 +3584,11 @@ export default function App() {
                                             {conv.last_message_time && (
                                               <span className="text-[8px] text-neutral-400">
                                                 {conv.last_message_time &&
-                                                isValid(
-                                                  new Date(
-                                                    conv.last_message_time,
-                                                  ),
-                                                )
+                                                  isValid(
+                                                    new Date(
+                                                      conv.last_message_time,
+                                                    ),
+                                                  )
                                                   ? `${formatDistanceToNow(new Date(conv.last_message_time))} ago`
                                                   : ""}
                                               </span>
@@ -4160,7 +3735,7 @@ export default function App() {
                                           </p>
                                           <span className="text-[8px] text-neutral-400 whitespace-nowrap">
                                             {n.created_at &&
-                                            isValid(new Date(n.created_at))
+                                              isValid(new Date(n.created_at))
                                               ? `${formatDistanceToNow(new Date(n.created_at))} ago`
                                               : ""}
                                           </span>
@@ -4185,116 +3760,134 @@ export default function App() {
                               </div>
                             )}
                           </div>
+                        ) : isProfileLoading ? (
+                          <div className="flex flex-col items-center justify-center py-20 gap-3 text-neutral-300">
+                            <div className="w-6 h-6 border-2 border-neutral-200 border-t-black rounded-full animate-spin" />
+                            <p className="text-[10px] font-mono uppercase tracking-widest">Syncing identity...</p>
+                          </div>
+                        ) : !profileData ? (
+                          <div className="flex flex-col items-center justify-center py-20 gap-4">
+                            <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-300">No profile data</p>
+                            {selectedUserId && (
+                              <button
+                                onClick={() => fetchProfile(selectedUserId)}
+                                className="text-[10px] font-black uppercase tracking-widest text-black hover:opacity-60 transition-opacity"
+                              >
+                                Retry
+                              </button>
+                            )}
+                          </div>
                         ) : (
-                          profileData && (
-                            <div className="space-y-6">
-                              {isEditingProfile ? (
-                                <div className="animate-in fade-in slide-in-from-top-4 duration-500">
-                                  <header className="flex flex-col items-center text-center mb-8">
-                                    <Avatar
-                                      src={profileData.avatar_url}
-                                      name={profileData.full_name}
-                                      size="lg"
+                          <div className="space-y-6">
+                            {isEditingProfile ? (
+                              <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+                                <header className="flex flex-col items-center text-center mb-8">
+                                  <Avatar
+                                    src={profileData.avatar_url}
+                                    name={profileData.full_name}
+                                    size="lg"
+                                  />
+                                  <h2 className="text-xl font-bold mt-4">
+                                    Modify Synapse Node
+                                  </h2>
+                                </header>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">
+                                      Identity Headline
+                                    </label>
+                                    <input
+                                      className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-black outline-none transition-all"
+                                      value={profileForm.headline}
+                                      onChange={(e) =>
+                                        setProfileForm({
+                                          ...profileForm,
+                                          headline: e.target.value,
+                                        })
+                                      }
+                                      placeholder="e.g. Senior Product Designer"
                                     />
-                                    <h2 className="text-xl font-bold mt-4">
-                                      Modify Synapse Node
-                                    </h2>
-                                  </header>
-                                  <div className="space-y-4">
-                                    <div className="space-y-2">
-                                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">
-                                        Identity Headline
-                                      </label>
-                                      <input
-                                        className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl px-4 py-3 text-xs font-bold focus:ring-2 focus:ring-black outline-none transition-all"
-                                        value={profileForm.headline}
-                                        onChange={(e) =>
-                                          setProfileForm({
-                                            ...profileForm,
-                                            headline: e.target.value,
-                                          })
-                                        }
-                                        placeholder="e.g. Senior Product Designer"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">
-                                        Neural Bio
-                                      </label>
-                                      <textarea
-                                        className="w-full bg-neutral-50 border border-neutral-200 rounded-2xl px-4 py-3 text-xs min-h-[120px] focus:ring-2 focus:ring-black outline-none transition-all"
-                                        value={profileForm.bio}
-                                        onChange={(e) =>
-                                          setProfileForm({
-                                            ...profileForm,
-                                            bio: e.target.value,
-                                          })
-                                        }
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase text-neutral-400 ml-1">
+                                      Neural Bio
+                                    </label>
+                                    <MarkdownEditor.Root
+                                      content={profileForm.bio}
+                                      onChange={(v) =>
+                                        setProfileForm({ ...profileForm, bio: v })
+                                      }
+                                    >
+                                      <MarkdownEditor.ModeToggle className="mb-2" />
+                                      <MarkdownEditor.Auto
                                         placeholder="Describe your capabilities..."
+                                        minHeightClass="min-h-[120px]"
+                                        textAreaClassName="text-xs"
                                       />
-                                    </div>
-                                    <div className="flex gap-2 pt-4">
-                                      <Button
-                                        className="flex-1 h-12 rounded-2xl text-[10px] uppercase font-black tracking-widest"
-                                        onClick={updateProfile}
-                                      >
-                                        Lock Changes
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        className="h-12 rounded-2xl text-[10px] uppercase font-black tracking-widest"
-                                        onClick={() =>
-                                          setIsEditingProfile(false)
-                                        }
-                                      >
-                                        Abort
-                                      </Button>
-                                    </div>
+                                    </MarkdownEditor.Root>
+                                  </div>
+                                  <div className="flex gap-2 pt-4">
+                                    <Button
+                                      className="flex-1 h-12 rounded-2xl text-[10px] uppercase font-black tracking-widest"
+                                      onClick={updateProfile}
+                                    >
+                                      Lock Changes
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      className="h-12 rounded-2xl text-[10px] uppercase font-black tracking-widest"
+                                      onClick={() =>
+                                        setIsEditingProfile(false)
+                                      }
+                                    >
+                                      Abort
+                                    </Button>
                                   </div>
                                 </div>
-                              ) : (
-                                <ProfilePanel
-                                  profileData={profileData}
-                                  currentUser={currentUser}
-                                  isConnected={isConnected}
-                                  onEdit={() => {
-                                    if (profileData) {
-                                      setProfileForm({
-                                        headline: profileData.headline || "",
-                                        bio: profileData.bio || "",
-                                        avatar_url:
-                                          profileData.avatar_url || "",
-                                        company_name:
-                                          profileData.company_name || "",
-                                        company_description:
-                                          profileData.company_description || "",
-                                        company_website:
-                                          profileData.company_website || "",
-                                      });
-                                      setIsEditingProfile(true);
-                                    }
-                                  }}
-                                  onLogout={logout}
-                                  onNavigateToAdmin={() => {
-                                    navigate("/admin");
-                                    setIsRightOpen(false);
-                                  }}
-                                  onSelectUserId={(id) => setSelectedUserId(id)}
-                                  onRequestSync={(id) =>
-                                    handleToggleConnection(id)
+                              </div>
+                            ) : (
+                              <ProfilePanel
+                                profileData={profileData}
+                                currentUser={currentUser}
+                                isConnected={isConnected}
+                                onEdit={() => {
+                                  if (profileData) {
+                                    setProfileForm({
+                                      headline: profileData.headline || "",
+                                      bio: profileData.bio || "",
+                                      avatar_url:
+                                        profileData.avatar_url || "",
+                                      company_name:
+                                        profileData.company_name || "",
+                                      company_description:
+                                        profileData.company_description || "",
+                                      company_website:
+                                        profileData.company_website || "",
+                                    });
+                                    setIsEditingProfile(true);
                                   }
-                                  onMessage={(user) => {
-                                    setActiveTab("messages");
-                                    setActiveChatUser(user);
-                                  }}
-                                  onAddCVItem={addCVItem}
-                                  onAddSkill={addSkill}
-                                  onAddPortfolioItem={addPortfolioItem}
-                                  onVerifySkill={verifySkill}
-                                />
-                              )}
-                            </div>
-                          )
+                                }}
+                                onLogout={logout}
+                                onNavigateToAdmin={() => {
+                                  navigate("/admin");
+                                  setIsRightOpen(false);
+                                }}
+                                onSelectUserId={(id) => setSelectedUserId(id)}
+                                onRequestSync={(id) =>
+                                  handleToggleConnection(id)
+                                }
+                                onMessage={(user) => {
+                                  setActiveTab("messages");
+                                  setActiveChatUser(user);
+                                }}
+                                onAddCVItem={addCVItem}
+                                onAddSkill={addSkill}
+                                onAddPortfolioItem={addPortfolioItem}
+                                onVerifySkill={verifySkill}
+                                onAiEditBio={handleAiBio}
+                              />
+                            )}
+                          </div>
                         )}
                       </div>
                     </>
@@ -4372,153 +3965,3 @@ export default function App() {
   );
 }
 
-const FileGallery = ({
-  files,
-  onSelect,
-  onClose,
-  onUpload,
-  onDelete,
-  galleryFilter,
-  setGalleryFilter,
-}: {
-  files: FileItem[];
-  onSelect: (file: FileItem) => void;
-  onClose: () => void;
-  onUpload: (name: string, url: string, type: string, purpose: string) => void;
-  onDelete: (id: string | number) => void;
-  galleryFilter: string;
-  setGalleryFilter: (f: string) => void;
-}) => {
-  const filteredFiles =
-    galleryFilter === "all"
-      ? files
-      : files.filter((f) => f.purpose === galleryFilter);
-
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-      >
-        <header className="p-6 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight">
-              Professional Asset Gallery
-            </h2>
-            <p className="text-xs text-neutral-500">
-              Manage your verified files and career artifacts
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-white rounded-full transition-colors border border-neutral-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </header>
-
-        <div className="p-6 flex flex-col gap-6 overflow-hidden">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-            <div className="flex gap-2 p-1 bg-neutral-100 rounded-xl overflow-x-auto scrollbar-hide">
-              {["all", "cv_item", "portfolio_item", "other"].map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setGalleryFilter(f)}
-                  className={cn(
-                    "px-4 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-widest transition-all whitespace-nowrap",
-                    galleryFilter === f
-                      ? "bg-white text-black shadow-sm"
-                      : "text-neutral-400 hover:text-neutral-600",
-                  )}
-                >
-                  {f.replace("_", " ")}
-                </button>
-              ))}
-            </div>
-
-            <label className="bg-black text-white px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:bg-neutral-800 transition-colors shrink-0">
-              <Plus className="w-3 h-3 inline mr-2" /> Upload New
-              <input
-                type="file"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const url = URL.createObjectURL(file);
-                    onUpload(
-                      file.name,
-                      url,
-                      file.type,
-                      galleryFilter === "all" ? "other" : galleryFilter,
-                    );
-                  }
-                }}
-              />
-            </label>
-          </div>
-
-          <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-4 min-h-[300px] pb-10 scrollbar-hide">
-            {(filteredFiles?.length || 0) === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center text-neutral-400 gap-3 py-20">
-                <FolderOpen className="w-12 h-12 opacity-20" />
-                <p className="text-xs font-medium">
-                  No assets found in this category
-                </p>
-              </div>
-            ) : (
-              filteredFiles.map((file) => (
-                <div
-                  key={file.id}
-                  className="group relative bg-neutral-50 border border-neutral-200 rounded-2xl p-4 hover:border-black transition-all cursor-pointer"
-                  onClick={() => onSelect(file)}
-                >
-                  <div className="aspect-square bg-white rounded-xl mb-3 flex items-center justify-center border border-neutral-100 group-hover:shadow-md transition-all">
-                    {file.type?.startsWith("image/") ? (
-                      <img
-                        src={file.url}
-                        alt={file.name}
-                        className="w-full h-full object-cover rounded-xl"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center gap-1">
-                        <FileText className="w-8 h-8 text-neutral-200" />
-                        <span className="text-[8px] font-mono text-neutral-400 uppercase">
-                          {file.type.split("/")[1] || "FILE"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[10px] font-bold truncate mb-1">
-                    {file.name}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest">
-                      {file.purpose.replace("_", " ")}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(file.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <footer className="p-6 bg-neutral-50/50 border-t border-neutral-100">
-          <p className="text-[8px] text-neutral-400 font-bold uppercase tracking-[0.2em] text-center">
-            Your files are stored securely and verified by ProSync
-          </p>
-        </footer>
-      </motion.div>
-    </div>
-  );
-};
