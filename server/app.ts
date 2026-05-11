@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import 'dotenv/config';
 import { Surreal, RecordId } from 'surrealdb';
 import { type IDBAdapter } from './lib/db/db';
 import { getAdapter, getRawDb, resetConnection } from './lib/db/dbFactory';
@@ -1453,6 +1452,17 @@ apiRouter.use(async (req, res, next) => {
       if (type !== 'quiz' && type !== 'poll') return res.status(400).json({ error: 'type must be quiz or poll' });
       const result = await geminiService.generateInteractiveContent(String(topic || ''), type);
       res.json({ result });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  apiRouter.post('/ai/magic-bio', async (req, res) => {
+    try {
+      const { bio, instruction } = req.body || {};
+      if (!instruction) return res.status(400).json({ error: 'instruction is required' });
+      const result = await geminiService.magicBio(String(bio || ''), String(instruction));
+      res.json({ bio: result });
     } catch (err) {
       res.status(500).json({ error: (err as Error).message });
     }

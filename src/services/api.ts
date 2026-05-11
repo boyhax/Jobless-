@@ -232,6 +232,9 @@ export const ai = {
 
   generateInteractive: (topic: string, type: 'quiz' | 'poll') =>
     fetchAPI('/api/ai/interactive', { method: 'POST', body: JSON.stringify({ topic, type }) }),
+
+  magicBio: (bio: string, instruction: string) =>
+    fetchAPI('/api/ai/magic-bio', { method: 'POST', body: JSON.stringify({ bio, instruction }) }),
 };
 
 // ─── Admin ────────────────────────────────────────────────────────────────────

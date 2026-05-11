@@ -1,5 +1,5 @@
 import { Surreal } from 'surrealdb';
-import { SurrealAdapter, IDBAdapter } from './db';
+import { SurrealAdapter, type IDBAdapter } from './db';
 
 let _db: Surreal | null = null;
 let _adapter: IDBAdapter | null = null;

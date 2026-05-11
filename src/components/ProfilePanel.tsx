@@ -18,6 +18,9 @@ import {
   AtSign,
   Trash2,
   LogOut,
+  Sparkles,
+  ArrowRight,
+  X,
 } from "lucide-react";
 import type { User, CVSection, Skill, PortfolioItem } from "../types";
 import { Button } from "./ui/Button";
@@ -44,6 +47,7 @@ interface ProfilePanelProps {
   onAddSkill?: (skill: any) => Promise<void>;
   onAddPortfolioItem?: (item: any) => Promise<void>;
   onVerifySkill?: (name: string, url: string) => Promise<void>;
+  onAiEditBio?: (instruction: string) => Promise<void>;
 }
 
 export const ProfilePanel: React.FC<ProfilePanelProps> = ({
@@ -60,6 +64,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
   onAddSkill,
   onAddPortfolioItem,
   onVerifySkill,
+  onAiEditBio,
 }) => {
   const { t } = useTranslation();
   const [showCVForm, setShowCVForm] = useState(false);
@@ -69,6 +74,9 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
     null,
   );
   const [verificationUrlInput, setVerificationUrlInput] = useState("");
+  const [showBioAiPrompt, setShowBioAiPrompt] = useState(false);
+  const [bioAiInstruction, setBioAiInstruction] = useState("");
+  const [isBioAiLoading, setIsBioAiLoading] = useState(false);
 
   const [cvForm, setCvForm] = useState({
     type: "experience",
@@ -112,6 +120,9 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
 
   const isOwnProfile =
     normalizeUserId(currentUser?.id) === normalizeUserId(profileData.id);
+  const isProUser =
+    currentUser?.subscription === "pro" ||
+    currentUser?.subscription === "enterprise";
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -248,11 +259,108 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
         </div>
       </header>
 
-      {profileData.bio && (
-        <section className="bg-neutral-50 p-6 rounded-[32px] border border-neutral-100 italic text-xs leading-relaxed text-neutral-600 mx-4">
-          <div className="markdown-body">
-            <Markdown>{profileData.bio}</Markdown>
-          </div>
+      {(profileData.bio || isOwnProfile) && (
+        <section className="bg-neutral-50 rounded-[32px] border border-neutral-100 mx-4 overflow-hidden">
+          {isOwnProfile && (
+            <div className="flex justify-end px-4 pt-3">
+              <button
+                onClick={() => {
+                  if (!isProUser) return;
+                  setShowBioAiPrompt(!showBioAiPrompt);
+                  setBioAiInstruction("");
+                }}
+                disabled={!isProUser}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all",
+                  !isProUser
+                    ? "text-neutral-300 cursor-not-allowed"
+                    : showBioAiPrompt
+                      ? "bg-purple-100 text-purple-600"
+                      : "text-neutral-400 hover:text-purple-500 hover:bg-purple-50",
+                )}
+                title={isProUser ? "AI Edit Bio" : "Upgrade to Pro to use AI bio editing"}
+              >
+                <Sparkles
+                  className={cn(
+                    "w-3 h-3",
+                    isBioAiLoading && "animate-spin",
+                  )}
+                />
+                <span>AI</span>
+                {!isProUser && (
+                  <span className="ml-0.5 px-1 py-0.5 bg-amber-100 text-amber-600 rounded text-[8px] font-black uppercase tracking-wider">
+                    PRO
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {profileData.bio && (
+            <div className="px-6 pb-6 pt-2 italic text-xs leading-relaxed text-neutral-600">
+              <div className="markdown-body">
+                <Markdown>{profileData.bio}</Markdown>
+              </div>
+            </div>
+          )}
+
+          {showBioAiPrompt && isOwnProfile && isProUser && (
+            <div className="px-4 pb-4">
+              <div className="flex items-center gap-2 p-1 bg-purple-50/50 rounded-xl border border-purple-100 animate-in fade-in slide-in-from-top-1">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="e.g. Make it more concise and add my expertise in AI..."
+                  className="flex-1 bg-transparent border-none text-[11px] px-3 py-1.5 outline-none font-medium placeholder:text-purple-300 text-purple-900"
+                  value={bioAiInstruction}
+                  onChange={(e) => setBioAiInstruction(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && bioAiInstruction && onAiEditBio) {
+                      setIsBioAiLoading(true);
+                      try {
+                        await onAiEditBio(bioAiInstruction);
+                        setShowBioAiPrompt(false);
+                        setBioAiInstruction("");
+                      } finally {
+                        setIsBioAiLoading(false);
+                      }
+                    }
+                  }}
+                />
+                <button
+                  onClick={async () => {
+                    if (bioAiInstruction && onAiEditBio) {
+                      setIsBioAiLoading(true);
+                      try {
+                        await onAiEditBio(bioAiInstruction);
+                        setShowBioAiPrompt(false);
+                        setBioAiInstruction("");
+                      } finally {
+                        setIsBioAiLoading(false);
+                      }
+                    }
+                  }}
+                  disabled={isBioAiLoading || !bioAiInstruction}
+                  className="bg-purple-500 text-white p-1.5 rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-30"
+                >
+                  {isBioAiLoading ? (
+                    <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBioAiPrompt(false);
+                    setBioAiInstruction("");
+                  }}
+                  className="text-neutral-400 hover:text-neutral-600 p-1.5 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

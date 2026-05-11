@@ -76,6 +76,11 @@ export const geminiService = {
     return resp?.feedback || [];
   },
 
+  async magicBio(bio: string, instruction: string): Promise<string | null> {
+    const resp = await api.ai.magicBio(bio, instruction);
+    return resp?.bio || null;
+  },
+
   async generateInteractiveContent(topic: string, type: "quiz" | "poll") {
     const resp = await api.ai.generateInteractive(topic, type);
     return resp?.result || null;

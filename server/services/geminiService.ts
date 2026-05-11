@@ -228,6 +228,33 @@ Instruction:
     }
   },
 
+  async magicBio(bio: string, instruction: string) {
+    ensureConfigured();
+
+    try {
+      const prompt = `You are a professional profile writer for ProSync Oman, a high-end networking platform.
+Current Bio: "${bio || "(Empty)"}"
+User Instruction: "${instruction}"
+
+Instructions:
+- Rewrite or generate the bio following the user's instruction precisely.
+- Keep it concise, professional, and in first-person voice.
+- Use Markdown formatting (bold, bullet points, etc.) sparingly to enhance readability.
+- Focus on the Omani professional market context.
+- Return ONLY the new bio text, no explanations.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+      });
+
+      return response.text?.trim() || null;
+    } catch (error) {
+      console.error("AI magic bio failed:", error);
+      return null;
+    }
+  },
+
   buildMagicPostResultFromText(text: string) {
     return {
       optimizedContent: text,

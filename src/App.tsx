@@ -1270,6 +1270,15 @@ export default function App() {
     }
   };
 
+  const handleAiBio = async (instruction: string) => {
+    if (!currentUser) return;
+    const newBio = await geminiService.magicBio(profileData?.bio || "", instruction);
+    if (newBio) {
+      await api.profile.update(currentUser.id, { bio: newBio });
+      fetchProfile(currentUser.id);
+    }
+  };
+
   const handleAiGenerateInteractive = async (type: "quiz" | "poll") => {
     if (!postContent) return;
     setIsAiLoading(true);
@@ -3983,6 +3992,7 @@ export default function App() {
                                   onAddSkill={addSkill}
                                   onAddPortfolioItem={addPortfolioItem}
                                   onVerifySkill={verifySkill}
+                                  onAiEditBio={handleAiBio}
                                 />
                               )}
                             </div>
