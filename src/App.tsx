@@ -842,6 +842,7 @@ export default function App() {
     const newBio = await geminiService.magicBio(profileData?.bio || "", instruction);
     if (newBio) {
       await api.profile.update(currentUser.id, { bio: newBio });
+      setProfileForm(prev => ({ ...prev, bio: newBio }));
       fetchProfile(currentUser.id);
     }
   };

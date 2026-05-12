@@ -12,19 +12,19 @@ globalThis.__nitro_vite_envs__ = {};
 //#endregion
 //#region #nitro/virtual/public-assets-data
 var public_assets_data_default = {
-	"/assets/index-BNwHPjv1.css": {
+	"/assets/index-BY0oY62-.css": {
 		"type": "text/css; charset=utf-8",
-		"etag": "\"d226-6ETWD7Q9AzYJYhq82WacvCgl/ag\"",
-		"mtime": "2026-05-11T13:13:45.710Z",
-		"size": 53798,
-		"path": "../public/assets/index-BNwHPjv1.css"
+		"etag": "\"d5f6-ZvykehwB76kyCOldWzvOYoYgHpY\"",
+		"mtime": "2026-05-12T10:43:34.007Z",
+		"size": 54774,
+		"path": "../public/assets/index-BY0oY62-.css"
 	},
-	"/assets/index-B7TklI1d.js": {
+	"/assets/index-BQbOuQ1V.js": {
 		"type": "text/javascript; charset=utf-8",
-		"etag": "\"af626-jR/ihWOY+DnPsU9qZu9lLqH3KGo\"",
-		"mtime": "2026-05-11T13:13:45.710Z",
-		"size": 718374,
-		"path": "../public/assets/index-B7TklI1d.js"
+		"etag": "\"bf918-CtNH63bvsSskPJgOkI3cvJbYlv4\"",
+		"mtime": "2026-05-12T10:43:34.006Z",
+		"size": 784664,
+		"path": "../public/assets/index-BQbOuQ1V.js"
 	}
 };
 //#endregion
@@ -97,6 +97,44 @@ var SurrealAdapter = class {
 	db;
 	constructor(db) {
 		this.db = db;
+	}
+	async migrate() {
+		for (const q of [
+			"DEFINE TABLE users SCHEMALESS;",
+			"DEFINE INDEX userEmail ON users FIELDS email UNIQUE;",
+			"DEFINE TABLE places SCHEMALESS;",
+			"DEFINE INDEX placeName ON places FIELDS name UNIQUE;",
+			"DEFINE TABLE posts SCHEMALESS;",
+			"DEFINE TABLE jobs SCHEMALESS;",
+			"DEFINE TABLE cv_sections SCHEMALESS;",
+			"DEFINE TABLE comments SCHEMALESS;",
+			"DEFINE TABLE messages SCHEMALESS;",
+			"DEFINE TABLE notifications SCHEMALESS;",
+			"DEFINE TABLE topics SCHEMALESS;",
+			"DEFINE TABLE skills SCHEMALESS;",
+			"DEFINE TABLE connects_to TYPE RELATION FROM users TO users;",
+			"DEFINE TABLE follows_topic TYPE RELATION FROM users TO topics;",
+			"DEFINE TABLE applies_to TYPE RELATION FROM users TO jobs;",
+			"DEFINE TABLE tagged_with TYPE RELATION FROM posts TO topics;",
+			"DEFINE TABLE job_tagged_with TYPE RELATION FROM jobs TO topics;",
+			"DEFINE TABLE requires_skill TYPE RELATION FROM jobs TO skills;",
+			"DEFINE TABLE user_has_skill TYPE RELATION FROM users TO skills;",
+			"DEFINE TABLE user_skills SCHEMALESS;",
+			"DEFINE TABLE portfolio SCHEMALESS;",
+			"DEFINE TABLE files SCHEMALESS;",
+			"DEFINE TABLE job_alerts SCHEMALESS;",
+			"DEFINE TABLE conversations SCHEMALESS;"
+		]) try {
+			await this.db.query(q);
+		} catch (err) {
+			const msg = err.message;
+			if (msg.includes("already exists")) continue;
+			if (msg.includes("IAM error") || msg.includes("permissions")) {
+				console.warn(`[SurrealAdapter] Permission warning during migration: ${msg}`);
+				continue;
+			}
+			console.warn(`Schema query failed: ${q}`, msg);
+		}
 	}
 	toRecordId(id) {
 		if (id.includes(":")) {
@@ -253,10 +291,38 @@ async function createConnection() {
 	const db = new Surreal();
 	try {
 		await db.connect(url);
-		if (user && pass) await db.signin({
-			username: user,
-			password: pass
-		});
+		if (user && pass) {
+			let signedIn = false;
+			let rootSignInError;
+			try {
+				await db.signin({
+					username: user,
+					password: pass
+				});
+				signedIn = true;
+			} catch (err) {
+				rootSignInError = err;
+			}
+			if (!signedIn) {
+				await db.use({
+					namespace: ns,
+					database
+				});
+				try {
+					await db.signin({
+						namespace: ns,
+						database,
+						username: user,
+						password: pass
+					});
+					signedIn = true;
+				} catch (dbUserErr) {
+					const rootMsg = rootSignInError instanceof Error ? rootSignInError.message : String(rootSignInError || "unknown");
+					const dbUserMsg = dbUserErr instanceof Error ? dbUserErr.message : String(dbUserErr || "unknown");
+					throw new Error(`Surreal authentication failed for both root and database user modes. Root error: ${rootMsg}. DB user error: ${dbUserMsg}`);
+				}
+			}
+		}
 		await db.use({
 			namespace: ns,
 			database
@@ -515,6 +581,28 @@ Instruction:
 			return null;
 		}
 	},
+	async magicBio(bio, instruction) {
+		ensureConfigured();
+		try {
+			const prompt = `You are a professional profile writer for ProSync Oman, a high-end networking platform.
+Current Bio: "${bio || "(Empty)"}"
+User Instruction: "${instruction}"
+
+Instructions:
+- Rewrite or generate the bio following the user's instruction precisely.
+- Keep it concise, professional, and in first-person voice.
+- Use Markdown formatting (bold, bullet points, etc.) sparingly to enhance readability.
+- Focus on the Omani professional market context.
+- Return ONLY the new bio text, no explanations.`;
+			return (await ai.models.generateContent({
+				model: "gemini-3-flash-preview",
+				contents: prompt
+			})).text?.trim() || null;
+		} catch (error) {
+			console.error("AI magic bio failed:", error);
+			return null;
+		}
+	},
 	buildMagicPostResultFromText(text) {
 		return {
 			optimizedContent: text,
@@ -550,6 +638,10 @@ var normalizeUserId = (value) => {
 	const raw = String(value).trim();
 	if (!raw) return null;
 	return raw.includes(":") ? raw : `users:${raw}`;
+};
+var isPermissionError = (error) => {
+	const msg = error?.message?.toLowerCase?.() || "";
+	return msg.includes("permission") || msg.includes("iam") || msg.includes("not enough permissions");
 };
 var getAuthUserId = (req) => {
 	const authHeader = req.headers["authorization"];
@@ -797,7 +889,7 @@ var isAdmin = async (req, res, next) => {
 			console.warn(`Admin access denied for user ${idRecord} (role: ${user.role})`);
 			return res.status(403).json({ error: "Forbidden: Admin access required" });
 		}
-		next();
+		return next();
 	} catch (e) {
 		console.error("Admin check error:", e);
 		return res.status(401).json({ error: "Unauthorized" });
@@ -1005,6 +1097,7 @@ apiRouter.get("/setup/status", async (req, res) => {
 		const count = users?.[0]?.count || 0;
 		res.json({ initialized: count > 0 });
 	} catch (err) {
+		if (isPermissionError(err)) return res.json({ initialized: true });
 		res.json({ initialized: false });
 	}
 });
@@ -1120,6 +1213,56 @@ apiRouter.post("/admin/update-subscription", isAdmin, async (req, res) => {
 	try {
 		await adapter.update("users", userId, { subscription });
 		res.json({ success: true });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+apiRouter.get("/analytics", isAdmin, async (req, res) => {
+	try {
+		const [users] = await db.query("SELECT count() as count FROM users GROUP ALL");
+		const [posts] = await db.query("SELECT count() as count FROM posts GROUP ALL");
+		const [jobs] = await db.query("SELECT count() as count FROM jobs GROUP ALL");
+		const [subs] = await db.query("SELECT subscription, count() as count FROM users GROUP BY subscription");
+		const [roles] = await db.query("SELECT role, count() as count FROM users GROUP BY role");
+		const stats = {
+			users: users?.[0] || { count: 0 },
+			posts: posts?.[0] || { count: 0 },
+			jobs: jobs?.[0] || { count: 0 },
+			subs: subs || [],
+			roles: roles || []
+		};
+		res.json(stats);
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+apiRouter.get("/users", isAdmin, async (req, res) => {
+	try {
+		const [users] = await db.query("SELECT id, full_name, email, role, subscription FROM users");
+		res.json((users || []).map((u) => ({
+			...u,
+			id: stringId(u.id)
+		})));
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+apiRouter.post("/users/subscription", isAdmin, async (req, res) => {
+	const { userId, subscription } = req.body;
+	try {
+		await adapter.update("users", userId, { subscription });
+		res.json({ success: true });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+apiRouter.post("/system/seed", isAdmin, async (req, res) => {
+	try {
+		await seedDB();
+		res.json({
+			success: true,
+			message: "Database re-seeded successfully"
+		});
 	} catch (err) {
 		res.status(500).json({ error: err.message });
 	}
@@ -1674,8 +1817,13 @@ apiRouter.get("/content", async (req, res) => {
 			const postId = stringId(p.id);
 			const postUserId = stringId(p.user_id);
 			const postRecordId = postId.includes(":") ? postId : `posts:${postId}`;
-			const [users] = await db.query("SELECT * FROM type::record($id)", { id: postUserId });
-			const postUser = users?.[0];
+			let postUser = void 0;
+			try {
+				const [users] = await db.query("SELECT * FROM type::record($id)", { id: postUserId });
+				postUser = users?.[0];
+			} catch (error) {
+				if (!isPermissionError(error)) throw error;
+			}
 			const [commentCounts] = await db.query("SELECT count() as count FROM comments WHERE post_id = type::record($postId) GROUP ALL", { postId: postRecordId });
 			const commentCount = commentCounts?.[0]?.count || 0;
 			const [postStats] = await db.query("SELECT count() as count, response_index FROM post_responses WHERE post_id = type::record($postId) GROUP BY response_index", { postId: postRecordId });
@@ -1695,6 +1843,7 @@ apiRouter.get("/content", async (req, res) => {
 		res.json(results);
 	} catch (err) {
 		console.error("Content fetch error:", err);
+		if (isPermissionError(err)) return res.json([]);
 		res.status(500).json({ error: err.message });
 	}
 });
@@ -1974,6 +2123,7 @@ apiRouter.get("/candidates", async (req, res) => {
 		}));
 		res.json(results);
 	} catch (err) {
+		if (isPermissionError(err)) return res.json([]);
 		res.status(500).json({ error: err.message });
 	}
 });
@@ -1994,6 +2144,7 @@ apiRouter.get("/recommendations/:userId?", async (req, res) => {
 			id: stringId(r.id)
 		})));
 	} catch (err) {
+		if (isPermissionError(err)) return res.json([]);
 		res.status(500).json({ error: err.message });
 	}
 });
@@ -2069,6 +2220,16 @@ apiRouter.post("/ai/interactive", async (req, res) => {
 		res.status(500).json({ error: err.message });
 	}
 });
+apiRouter.post("/ai/magic-bio", async (req, res) => {
+	try {
+		const { bio, instruction } = req.body || {};
+		if (!instruction) return res.status(400).json({ error: "instruction is required" });
+		const result = await geminiService.magicBio(String(bio || ""), String(instruction));
+		res.json({ bio: result });
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
 apiRouter.post("/ai/magic-post", async (req, res) => {
 	try {
 		const { content, instruction } = req.body || {};
@@ -2108,7 +2269,7 @@ apiRouter.post("/ai/magic-post/stream", async (req, res) => {
 			Connection: "keep-alive"
 		} });
 	} catch (err) {
-		res.status(500).json({ error: err.message });
+		return res.status(500).json({ error: err.message });
 	}
 });
 apiRouter.post("/user/preference/place", async (req, res) => {
@@ -2159,6 +2320,61 @@ apiRouter.post("/admin/seed-jobs", async (req, res) => {
 	try {
 		const [user] = await db.query("SELECT role FROM type::record($id)", { id: userId.toString().includes(":") ? userId : `users:${userId}` });
 		if (user?.[0]?.role !== "admin") return res.status(403).json({ error: "Admin only" });
+		const [companies] = await db.query("SELECT id, company_name FROM users WHERE role = \"company\" LIMIT 5");
+		if (!companies || companies.length === 0) return res.status(400).json({ error: "No company accounts found to assign jobs to. Create some company accounts first." });
+		const seedJobs = [
+			{
+				title: "Senior Software Engineer",
+				location: "Muscat, Oman",
+				salary: "$5,000 - $8,000",
+				experience: "5+ years"
+			},
+			{
+				title: "Project Manager",
+				location: "Salalah, Oman",
+				salary: "$4,000 - $6,000",
+				experience: "3+ years"
+			},
+			{
+				title: "Marketing Specialist",
+				location: "Dubai, UAE",
+				salary: "$3,500 - $5,000",
+				experience: "2+ years"
+			},
+			{
+				title: "UX/UI Designer",
+				location: "Remote",
+				salary: "$4,500 - $7,000",
+				experience: "4+ years"
+			},
+			{
+				title: "Data Scientist",
+				location: "Muscat, Oman",
+				salary: "$6,000 - $9,000",
+				experience: "3+ years"
+			}
+		];
+		for (const job of seedJobs) {
+			const company = companies[Math.floor(Math.random() * companies.length)];
+			await db.query("CREATE jobs SET user_id = $userId, title = $title, company_name = $company, location = $location, description = \"Join our team in this exciting role!\", salary_range = $salary, experience_level = $exp, end_date = time::now() + 30d, created_at = time::now()", {
+				userId: company.id,
+				title: job.title,
+				company: company.company_name || "Innovate Oman",
+				location: job.location,
+				salary: job.salary,
+				exp: job.experience
+			});
+		}
+		res.json({
+			success: true,
+			count: seedJobs.length
+		});
+	} catch (err) {
+		res.status(500).json({ error: err.message });
+	}
+});
+apiRouter.post("/system/seed-jobs", isAdmin, async (req, res) => {
+	try {
 		const [companies] = await db.query("SELECT id, company_name FROM users WHERE role = \"company\" LIMIT 5");
 		if (!companies || companies.length === 0) return res.status(400).json({ error: "No company accounts found to assign jobs to. Create some company accounts first." });
 		const seedJobs = [
