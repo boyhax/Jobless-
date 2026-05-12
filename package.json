@@ -4,90 +4,24 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-<<<<<<< HEAD
-    "dev": "vite",
-    "build": "vite build && nitropack build",
-    "start": "node .output/server/index.mjs",
-=======
     "dev": "vite --port 3000 --host",
     "build": "vite build",
->>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
     "deploy": "bun run build && wrangler deploy",
     "preview": "nitro preview",
-    "clean": "rm -rf dist",
->>>>>>> nitro
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist .output .nitro"
   },
   "dependencies": {
-<<<<<<< HEAD
-    "@analogjs/vite-plugin-nitro": "^2.5.0",
-    "@google/genai": "^1.51.0",
-    "@google/generative-ai": "^0.24.1",
-    "@hono/node-server": "^2.0.2",
-    "@tailwindcss/vite": "^4.1.14",
-    "@tanstack/react-virtual": "^3.13.24",
-    "@types/express": "^5.0.6",
-    "@vitejs/plugin-react": "^5.0.4",
-    "babel-plugin-react-compiler": "^19.0.0-beta-af1b7da-20250417",
-=======
     "@casl/ability": "^6.7.3",
     "@google/genai": "^1.52.0",
     "@google/generative-ai": "^0.24.1",
     "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-react": "^5.2.0",
     "babel-plugin-react-compiler": "^19.0.0-beta-ebf51a3-20250411",
->>>>>>> nitro
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "concurrently": "^9.2.1",
     "date-fns": "^4.1.0",
-<<<<<<< HEAD
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
-    "express-async-errors": "^3.1.1",
-    "i18next": "^26.0.8",
-    "i18next-browser-languagedetector": "^8.2.1",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
-    "nitropack": "^2.13.4",
-    "react": "^19.0.1",
-    "react-compiler-runtime": "^19.0.0-beta-af1b7da-20250417",
-    "react-dom": "^19.0.1",
-    "react-i18next": "^17.0.6",
-    "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.14.2",
-    "remark-breaks": "^4.0.0",
-    "remark-gfm": "^4.0.1",
-=======
-    "dotenv": "^17.4.2",
-    "hono": "^4.12.18",
-    "i18next": "^26.1.0",
-    "i18next-browser-languagedetector": "^8.2.1",
-    "lucide-react": "^0.546.0",
-    "motion": "^12.38.0",
-    "react": "^19.2.6",
-    "react-compiler-runtime": "^19.0.0-beta-ebf51a3-20250411",
-    "react-dom": "^19.2.6",
-    "react-i18next": "^17.0.7",
-    "react-markdown": "^10.1.0",
-    "react-router": "^7.15.0",
-    "react-router-dom": "^7.15.0",
->>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
-    "surrealdb": "^2.0.3",
-    "tailwind-merge": "^3.6.0"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-<<<<<<< HEAD
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.14.0",
-    "autoprefixer": "^10.4.21",
-    "nitro": "^3.0.260429-beta",
-    "tailwindcss": "^4.1.14",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.3"
-=======
     "dotenv": "^17.4.2",
     "hono": "^4.12.18",
     "i18next": "^26.1.0",
@@ -106,8 +40,6 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-=======
->>>>>>> 51adbfa5cad01e5a0eee6dfd6db4e0faeac2b97c
     "@types/node": "^22.19.18",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
@@ -116,6 +48,5 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.3",
     "vite": "^8.0.12"
->>>>>>> nitro
   }
 }
